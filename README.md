@@ -26,7 +26,7 @@ Just Talk 是一个面向桌面环境的语音输入工具。它通过全局快�
 
 ![macOS 实机刘海浮层：识别完成后的已复制状态](docs/assets/notch-live-final.png)
 
-屏幕没有刘海（外接显示器或无刘海机型）时自动回退为顶部居中的状态胶囊。通过 `position = "notch"` 或 TUI 的“提示位置”启用，行为细节见 [配置](#配置)。
+屏幕没有刘海（外接显示器或无刘海机型）时，浮层从屏幕顶部中央以同样的形态展开，同样显示实时文字和音量波形。通过 `position = "notch"` 或 TUI 的“提示位置”启用，行为细节见 [配置](#配置)。
 
 ## 功能
 
@@ -233,7 +233,7 @@ enabled = false
 hotkeys = []                       # 调试插件额外注册的热键
 ```
 
-`position = "notch"`（macOS 默认）让提示从刘海展开，`show_text` 控制刘海内是否显示实时/最终文字；浮层固定在鼠标所在屏幕，屏幕无刘海时回退为顶部居中胶囊（不显示文字），Linux / Windows 上 `"notch"` 按 `top-center` 处理。预览与效果说明见上文 [macOS 刘海浮层](#macos-刘海浮层)。在 TUI 中选中“提示位置”按 `e` 进入编辑、`j`/`k` 切换、`Enter` 保存即可即时修改；已有配置中显式写了 `position` 的不会被迁移。
+`position = "notch"`（macOS 默认）让提示从刘海展开，`show_text` 控制刘海内是否显示实时/最终文字；浮层固定在鼠标所在屏幕，屏幕无刘海时从顶部中央展开（同样显示文字），Linux / Windows 上 `"notch"` 按 `top-center` 处理。预览与效果说明见上文 [macOS 刘海浮层](#macos-刘海浮层)。在 TUI 中选中“提示位置”按 `e` 进入编辑、`j`/`k` 切换、`Enter` 保存即可即时修改；已有配置中显式写了 `position` 的不会被迁移。
 
 </details>
 

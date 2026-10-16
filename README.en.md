@@ -26,7 +26,7 @@ On macOS, the recording indicator expands straight out of the notch: live recogn
 
 ![macOS notch overlay on real hardware: copied state after recognition finishes](docs/assets/notch-live-final.png)
 
-On displays without a notch (external monitors or notch-less models) it falls back to a top-center status capsule. Enable it via `position = "notch"` or the overlay position field in the TUI; see [Configuration](#configuration) for behavior details.
+On displays without a notch (external monitors or notch-less models) the same indicator grows out of the top center of the screen, with live text and the waveform. Enable it via `position = "notch"` or the overlay position field in the TUI; see [Configuration](#configuration) for behavior details.
 
 ## Features
 
@@ -233,7 +233,7 @@ enabled = false
 hotkeys = []                       # extra hotkeys registered by the debug plugin
 ```
 
-`position = "notch"` (the macOS default) expands the indicator from the notch, and `show_text` controls whether live/final text is shown inside it; the overlay sticks to the screen under the mouse pointer, and a screen without a notch falls back to a top-center capsule (no text). On Linux/Windows `"notch"` behaves as `top-center`. See [macOS Notch Overlay](#macos-notch-overlay) above for previews and the visual behavior. In the TUI, select the overlay position field, press `e` to edit, `j`/`k` to cycle, and `Enter` to save — it applies immediately. Existing configs that set `position` explicitly are not migrated.
+`position = "notch"` (the macOS default) expands the indicator from the notch, and `show_text` controls whether live/final text is shown inside it; the overlay sticks to the screen under the mouse pointer, and on a screen without a notch it grows out of the top center instead (text included). On Linux/Windows `"notch"` behaves as `top-center`. See [macOS Notch Overlay](#macos-notch-overlay) above for previews and the visual behavior. In the TUI, select the overlay position field, press `e` to edit, `j`/`k` to cycle, and `Enter` to save — it applies immediately. Existing configs that set `position` explicitly are not migrated.
 
 </details>
 

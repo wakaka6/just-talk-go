@@ -4,6 +4,8 @@ All notable project changes are tracked here.
 
 ## Unreleased
 
+- macOS screens without a notch (external monitors, notch-less models) now show the full notch overlay growing out of the top center of the screen, including live recognized text, mic level, and the final result, instead of a text-less status capsule.
+
 ## v0.2.0 - 2026-10-10
 
 - Add multi-engine ASR support behind a pluggable engine registry. `[voice] engine` selects `doubao-stream` (default), `dashscope` (Qwen Fun-ASR realtime streaming), or batch engines `openai`, `auralwise`, `mimo-asr`; per-engine credentials live under `[voice.engine_configs.<engine>]` and are kept separately. Streaming engines keep live captions; batch engines produce only the final result. Existing Doubao credentials keep working unchanged.

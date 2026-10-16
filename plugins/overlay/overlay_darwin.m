@@ -254,7 +254,6 @@ static NSValue *jt_point(CGFloat x, CGFloat y) {
 - (void)showState:(NSString *)newState text:(NSString *)newText level:(double)level detail:(NSString *)newDetail;
 - (void)setTextEnabled:(BOOL)on;
 - (void)hide;
-- (void)hideNow;
 - (void)teardown;
 @end
 
@@ -311,29 +310,35 @@ static NSValue *jt_point(CGFloat x, CGFloat y) {
 
 - (BOOL)attachToScreen:(NSScreen *)screen {
 	if (screen == nil) return NO;
+	NSRect frame = [screen frame];
+	// Screens without a camera housing get a virtual notch: zero width, menu
+	// bar height, centered. The same shapes then grow out of the top edge.
+	CGFloat w = 0;
+	CGFloat h = fmax(0, NSMaxY(frame) - NSMaxY([screen visibleFrame]));
+	CGFloat centerX = NSMidX(frame);
 	if (@available(macOS 12.0, *)) {
 		NSEdgeInsets insets = [screen safeAreaInsets];
-		if (insets.top <= 0) return NO;
-		NSRect frame = [screen frame];
 		CGFloat leftW = NSWidth([screen auxiliaryTopLeftArea]);
 		CGFloat rightW = NSWidth([screen auxiliaryTopRightArea]);
-		CGFloat w = NSWidth(frame) - leftW - rightW;
-		if (w <= 0) return NO;
-		CGFloat centerX = NSMinX(frame) + leftW + w / 2.0;
-		CGFloat backing = [screen backingScaleFactor];
-		if (panel != nil && NSEqualRects(frame, screenFrame) && w == notchW && insets.top == notchH &&
-			centerX == notchCX && backing == backingScale) {
-			return YES;
+		CGFloat housingW = NSWidth(frame) - leftW - rightW;
+		if (insets.top > 0 && housingW > 0) {
+			w = housingW;
+			h = insets.top;
+			centerX = NSMinX(frame) + leftW + housingW / 2.0;
 		}
-		screenFrame = frame;
-		notchW = w;
-		notchH = insets.top;
-		notchCX = centerX;
-		backingScale = backing;
-		[self configure];
+	}
+	CGFloat backing = [screen backingScaleFactor];
+	if (panel != nil && NSEqualRects(frame, screenFrame) && w == notchW && h == notchH &&
+		centerX == notchCX && backing == backingScale) {
 		return YES;
 	}
-	return NO;
+	screenFrame = frame;
+	notchW = w;
+	notchH = h;
+	notchCX = centerX;
+	backingScale = backing;
+	[self configure];
+	return YES;
 }
 
 - (void)configure {
@@ -507,10 +512,11 @@ static NSValue *jt_point(CGFloat x, CGFloat y) {
 	CGFloat flare = 6.0 * scale;
 	switch (p) {
 	case JTNotchCollapsed:
+		// A virtual notch collapses to nothing; a real one hides behind the housing.
 		sh.w = notchW;
-		sh.h = notchH;
+		sh.h = notchW > 0 ? notchH : 0;
 		sh.flareR = 0;
-		sh.bottomR = fmin(9.0, notchH / 2.0);
+		sh.bottomR = fmin(9.0, sh.h / 2.0);
 		break;
 	case JTNotchEars:
 		sh.w = notchW + 2.0 * earW;
@@ -1072,19 +1078,6 @@ static NSValue *jt_point(CGFloat x, CGFloat y) {
 	[self collapse];
 }
 
-- (void)hideNow {
-	collapseToken++;
-	collapsing = NO;
-	sessionActive = NO;
-	[self cancelTypewriter];
-	[state release];
-	state = nil;
-	[self stopFrames];
-	if (panel != nil) [panel orderOut:nil];
-	visible = NO;
-	phase = JTNotchCollapsed;
-}
-
 @end
 
 // ---------------------------------------------------------------------------
@@ -1223,18 +1216,8 @@ static void jt_overlay_show(jt_overlay_t *overlay, NSString *state, NSString *la
 	}
 	overlay->lastConnecting = connecting;
 	NSScreen *screen = jt_session_screen(overlay);
-	if ([overlay->notch attachToScreen:screen]) {
-		if ([overlay->panel isVisible]) [overlay->panel orderOut:nil];
-		[overlay->notch showState:state text:text level:level detail:detail];
-		return;
-	}
-	// No camera housing on the active screen: fall back to a top-center capsule.
-	[overlay->notch hideNow];
-	if ([state isEqualToString:@"idle"]) {
-		[overlay->panel orderOut:nil];
-		return;
-	}
-	jt_overlay_show_capsule(overlay, screen, "top-center", label, r, g, b);
+	if (![overlay->notch attachToScreen:screen]) return;
+	[overlay->notch showState:state text:text level:level detail:detail];
 }
 
 static void jt_overlay_hide(jt_overlay_t *overlay) {
