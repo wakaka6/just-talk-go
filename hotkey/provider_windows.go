@@ -106,6 +106,7 @@ const (
 	vkSnapshot = 0x2C
 	vkScroll   = 0x91
 	vkPause    = 0x13
+	vkApps     = 0x5D
 	vkNumLock  = 0x90
 	vkMultiply = 0x6A
 	vkAdd      = 0x6B
@@ -164,6 +165,7 @@ var winVKToKey = map[uint32]KeyCode{
 	vkInsert: KeyInsert, vkDelete: KeyDelete,
 	vkSnapshot: KeyPrintScreen, vkScroll: KeyScrollLock,
 	vkPause: KeyPause, vkNumLock: KeyNumLock,
+	vkApps:     KeyMenu,
 	vkMultiply: KeyNumMultiply, vkAdd: KeyNumAdd,
 	vkSubtract: KeyNumSubtract, vkDecimal: KeyNumDecimal,
 	vkDivide: KeyNumDivide,

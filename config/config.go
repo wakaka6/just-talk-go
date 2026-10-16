@@ -216,6 +216,7 @@ func buildKeyNameMap() map[string]hotkey.KeyCode {
 		hotkey.KeyArrowUp, hotkey.KeyArrowDown, hotkey.KeyArrowLeft, hotkey.KeyArrowRight,
 		hotkey.KeyHome, hotkey.KeyEnd, hotkey.KeyPageUp, hotkey.KeyPageDown,
 		hotkey.KeyInsert, hotkey.KeyDelete,
+		hotkey.KeyMenu,
 		hotkey.KeyNum0, hotkey.KeyNum1, hotkey.KeyNum2, hotkey.KeyNum3, hotkey.KeyNum4,
 		hotkey.KeyNum5, hotkey.KeyNum6, hotkey.KeyNum7, hotkey.KeyNum8, hotkey.KeyNum9,
 		hotkey.KeyBacktick, hotkey.KeyMinus, hotkey.KeyEqual,
@@ -244,6 +245,8 @@ func buildKeyNameMap() map[string]hotkey.KeyCode {
 	m["insert"] = hotkey.KeyInsert
 	m["delete"] = hotkey.KeyDelete
 	m["capslock"] = hotkey.KeyCapsLock
+	m["apps"] = hotkey.KeyMenu
+	m["application"] = hotkey.KeyMenu
 	m["`"] = hotkey.KeyBacktick
 	m["-"] = hotkey.KeyMinus
 	m["="] = hotkey.KeyEqual

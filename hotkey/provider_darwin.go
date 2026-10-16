@@ -133,6 +133,7 @@ var darwinKeyToUnified = map[uint16]KeyCode{
 	0x7E: KeyArrowUp, 0x7D: KeyArrowDown, 0x7B: KeyArrowLeft, 0x7C: KeyArrowRight,
 	0x73: KeyHome, 0x77: KeyEnd, 0x74: KeyPageUp, 0x79: KeyPageDown,
 	0x72: KeyInsert, 0x75: KeyDelete,
+	0x6E: KeyMenu, // kVK_ContextualMenu: PC keyboard menu key
 
 	0x32: KeyBacktick, 0x1B: KeyMinus, 0x18: KeyEqual,
 	0x21: KeyLeftBracket, 0x1E: KeyRightBracket,

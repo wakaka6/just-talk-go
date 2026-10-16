@@ -76,6 +76,8 @@ func TestParseHotkeyList(t *testing.T) {
 		{input: "Fn+,", want: []hotkey.Combo{fnComma}},
 		{input: "Fn+, , F13", want: []hotkey.Combo{fnComma, f13}},
 		{input: " Fn , ,F13, ", want: []hotkey.Combo{fn, f13}},
+		{input: "Fn, Menu", want: []hotkey.Combo{fn, {Key: hotkey.KeyMenu}}},
+		{input: "Apps, application, menu", want: []hotkey.Combo{{Key: hotkey.KeyMenu}}},
 	} {
 		got, err := ParseHotkeyList(test.input)
 		if err != nil {

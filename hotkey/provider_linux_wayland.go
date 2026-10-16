@@ -79,6 +79,7 @@ var evdevKeyToUnified = map[uint16]KeyCode{
 	102: KeyHome, 107: KeyEnd,
 	104: KeyPageUp, 109: KeyPageDown,
 	110: KeyInsert, 111: KeyDelete,
+	127: KeyMenu, // KEY_COMPOSE: PC keyboard menu key
 
 	// Punctuation
 	41: KeyBacktick, 12: KeyMinus, 13: KeyEqual,

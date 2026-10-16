@@ -123,6 +123,11 @@ const (
 	KeyNumLock     KeyCode = 83
 )
 
+const (
+	// KeyMenu is the PC context-menu (Application) key next to right Ctrl.
+	KeyMenu KeyCode = 84
+)
+
 // ---- Modifier virtual keys (256..259) ----
 // These are virtual key codes for the modifier keys themselves,
 // used when registering modifier-only hotkeys.
@@ -198,6 +203,7 @@ var keyNames = map[KeyCode]string{
 	KeyPrintScreen:  "PrintScreen",
 	KeyScrollLock:   "ScrollLock",
 	KeyPause:        "Pause",
+	KeyMenu:         "Menu",
 	KeyInsert:       "Insert",
 	KeyDelete:       "Delete",
 	KeyHome:         "Home",

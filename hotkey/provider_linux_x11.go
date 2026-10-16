@@ -107,6 +107,7 @@ var x11KeysymToUnified = map[C.KeySym]KeyCode{
 	C.XK_Home: KeyHome, C.XK_End: KeyEnd,
 	C.XK_Prior: KeyPageUp, C.XK_Next: KeyPageDown,
 	C.XK_Insert: KeyInsert, C.XK_Delete: KeyDelete,
+	C.XK_Menu: KeyMenu,
 
 	C.XK_grave: KeyBacktick, C.XK_minus: KeyMinus,
 	C.XK_equal: KeyEqual, C.XK_bracketleft: KeyLeftBracket,

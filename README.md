@@ -159,11 +159,12 @@ make install
 - `Fn`（macOS / Linux）：可写作 `Function`，可与普通键组合，但不能与 `F1`–`F24` 组合。Linux 上 `Fn` 通过 evdev 读取；配置了 `Fn` 的热键在未指定后端时自动选择 Wayland/evdev 后端。
 - 功能键 `F1`–`F24`，如 `F9`、`Alt+F8`。
 - 非文本控制键和导航键：`Tab`、`Enter`、`Escape`、`Backspace`、`CapsLock`、方向键、`Home`、`End`、`PageUp`、`PageDown`、`Insert`、`Delete`。
+- PC 键盘右 `Ctrl` 左边的菜单键：`Menu`（也可写 `Apps`、`Application`）。
 - 不支持：`Fn+F1`–`Fn+F24`，以及不带 `Fn` 的字母、数字、标点、`Space`、小键盘键等会输入文本的按键（如 `Alt+G`、`G`、`Alt+1`、`Alt+Space`）。
 
 Windows 上低级键盘钩子只观察按键边沿，不消费、不回放修饰键，因此单独的 `Alt`、`Super` 和 `Alt+Tab` 等系统快捷键保持原有行为。
 
-`push_to_talk` 可以配多个热键，用逗号分隔，例如 `push_to_talk = "Fn, F13"`：内置键盘按 `Fn`，外接 PC 键盘按 Print Screen（macOS 上识别为 `F13`）。任一热键都能开始/停止录音；`hold` 模式下要等所有按住的热键都松开才停止。逗号键本身写在 `+` 后面（如 `Fn+,`）时仍是按键。罗技等第三方键盘的 `Fn` 由键盘固件处理、不会发给系统，无法作为热键。
+`push_to_talk` 可以配多个热键，用逗号分隔，例如 `push_to_talk = "Fn, Menu"`：内置键盘按 `Fn`，外接 PC 键盘按菜单键（Print Screen 在 macOS 上识别为 `F13`，也可以用）。任一热键都能开始/停止录音；`hold` 模式下要等所有按住的热键都松开才停止。逗号键本身写在 `+` 后面（如 `Fn+,`）时仍是按键。罗技等第三方键盘的 `Fn` 由键盘固件处理、不会发给系统，无法作为热键。
 
 ### TUI 快捷键
 
