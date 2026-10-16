@@ -4,6 +4,7 @@ All notable project changes are tracked here.
 
 ## Unreleased
 
+- `push_to_talk` accepts several comma-separated hotkeys (e.g. `"Fn, F13"`), so a built-in keyboard and an external keyboard can each use their own key. In `hold` mode recording stops only after every held hotkey is released. Existing single-hotkey configs are unchanged.
 - macOS screens without a notch (external monitors, notch-less models) now show the full notch overlay growing out of the top center of the screen, including live recognized text, mic level, and the final result, instead of a text-less status capsule.
 
 ## v0.2.0 - 2026-10-10

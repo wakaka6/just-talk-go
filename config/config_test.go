@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/c/just-talk-go/hotkey"
@@ -56,6 +57,37 @@ func TestParseHotkeyFnModifier(t *testing.T) {
 		want := hotkey.Combo{Mods: hotkey.ModFn, Key: test.key}
 		if combo != want {
 			t.Fatalf("ParseHotkey(%q) = %v, want %v", test.input, combo, want)
+		}
+	}
+}
+
+func TestParseHotkeyList(t *testing.T) {
+	fn := hotkey.Combo{Mods: hotkey.ModFn}
+	f13 := hotkey.Combo{Key: hotkey.KeyF13}
+	fnComma := hotkey.Combo{Mods: hotkey.ModFn, Key: hotkey.KeyComma}
+	for _, test := range []struct {
+		input string
+		want  []hotkey.Combo
+	}{
+		{input: "Fn", want: []hotkey.Combo{fn}},
+		{input: "Fn, F13", want: []hotkey.Combo{fn, f13}},
+		{input: "Fn，F13", want: []hotkey.Combo{fn, f13}},
+		{input: "Fn, F13, fn", want: []hotkey.Combo{fn, f13}},
+		{input: "Fn+,", want: []hotkey.Combo{fnComma}},
+		{input: "Fn+, , F13", want: []hotkey.Combo{fnComma, f13}},
+		{input: " Fn , ,F13, ", want: []hotkey.Combo{fn, f13}},
+	} {
+		got, err := ParseHotkeyList(test.input)
+		if err != nil {
+			t.Fatalf("ParseHotkeyList(%q): %v", test.input, err)
+		}
+		if !slices.Equal(got, test.want) {
+			t.Fatalf("ParseHotkeyList(%q) = %v, want %v", test.input, got, test.want)
+		}
+	}
+	for _, input := range []string{"", " , ", "Fn, Bogus"} {
+		if _, err := ParseHotkeyList(input); err == nil {
+			t.Fatalf("ParseHotkeyList(%q) succeeded, want error", input)
 		}
 	}
 }

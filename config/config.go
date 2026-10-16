@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -308,6 +309,36 @@ func ParseHotkeys(strings []string) ([]hotkey.Combo, error) {
 			return nil, err
 		}
 		combos = append(combos, c)
+	}
+	return combos, nil
+}
+
+// ParseHotkeyList parses a comma-separated hotkey list such as "Fn, F13",
+// dropping duplicates. A comma right after "+" is the comma key itself, so
+// "Fn+," stays one hotkey. Full-width commas are accepted as separators.
+func ParseHotkeyList(s string) ([]hotkey.Combo, error) {
+	s = strings.ReplaceAll(s, "，", ",")
+	var combos []hotkey.Combo
+	start := 0
+	for i := 0; i <= len(s); i++ {
+		if i < len(s) && (s[i] != ',' || strings.HasSuffix(strings.TrimSpace(s[start:i]), "+")) {
+			continue
+		}
+		part := strings.TrimSpace(s[start:i])
+		start = i + 1
+		if part == "" {
+			continue
+		}
+		c, err := ParseHotkey(part)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.Contains(combos, c) {
+			combos = append(combos, c)
+		}
+	}
+	if len(combos) == 0 {
+		return nil, fmt.Errorf("empty hotkey string")
 	}
 	return combos, nil
 }

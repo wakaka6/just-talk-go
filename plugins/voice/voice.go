@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -243,13 +244,16 @@ func markTUIHandled(evt hotkey.Event) {
 }
 
 type VoicePlugin struct {
-	env                    engine.PluginEnv
-	logger                 *slog.Logger
-	cfg                    *config.Config
-	mu                     sync.Mutex
-	eventOnce              sync.Once
-	events                 chan hotkey.Event
-	combo                  hotkey.Combo
+	env       engine.PluginEnv
+	logger    *slog.Logger
+	cfg       *config.Config
+	mu        sync.Mutex
+	eventOnce sync.Once
+	events    chan hotkey.Event
+	combos    []hotkey.Combo
+	// heldCombos tracks hold-mode hotkeys currently pressed; recording stops
+	// only after every one of them is released.
+	heldCombos             map[hotkey.Combo]bool
 	mode                   string
 	recording              bool
 	stopping               bool
@@ -330,17 +334,18 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	vc := cfg.Voice
 	if !vc.Enabled {
 		p.mu.Lock()
-		oldCombo := p.combo
+		oldCombos := p.combos
 		p.cleanupTransientHotkeysLocked()
-		p.combo = hotkey.Combo{}
+		p.combos = nil
+		clear(p.heldCombos)
 		p.mu.Unlock()
-		if oldCombo.Key != hotkey.KeyNone || oldCombo.Mods != hotkey.ModNone {
-			p.env.UnregisterHotkey(oldCombo)
+		for _, c := range oldCombos {
+			p.env.UnregisterHotkey(c)
 		}
 		p.logger.Info("voice disabled")
 		return nil
 	}
-	combo, err := config.ParseHotkey(vc.PushToTalk)
+	combos, err := config.ParseHotkeyList(vc.PushToTalk)
 	if err != nil {
 		return fmt.Errorf("parse hotkey %q: %w", vc.PushToTalk, err)
 	}
@@ -348,37 +353,58 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	if mode == "" {
 		mode = "hold"
 	}
-	if err := validateVoiceHotkey(combo); err != nil {
-		return err
+	for _, c := range combos {
+		if err := validateVoiceHotkey(c); err != nil {
+			return err
+		}
 	}
 
 	p.mu.Lock()
-	oldCombo := p.combo
-	oldMode := p.mode
-	sameRegistration := oldCombo == combo && oldMode == mode
-	p.combo = combo
+	oldCombos := p.combos
+	modeChanged := p.mode != mode
+	p.combos = combos
 	p.mode = mode
 	p.autoSubmit = vc.AutoSubmit
 	p.stopDelayMs = vc.StopDelayMs
+	for c := range p.heldCombos {
+		if modeChanged || !slices.Contains(combos, c) {
+			delete(p.heldCombos, c)
+		}
+	}
 	p.mu.Unlock()
 
-	p.logger.Info("config_reloaded", "hotkey", combo, "mode", mode,
+	p.logger.Info("config_reloaded", "hotkeys", combos, "mode", mode,
 		"auto_submit", vc.AutoSubmit, "stop_delay_ms", vc.StopDelayMs)
 
-	if !sameRegistration {
-		isOld := oldCombo.Key != hotkey.KeyNone || oldCombo.Mods != hotkey.ModNone
-		if isOld {
-			p.env.UnregisterHotkey(oldCombo)
+	// Suppress depends on mode, so a mode change re-registers every combo;
+	// otherwise only added/removed combos are touched.
+	var registered []hotkey.Combo
+	for _, c := range oldCombos {
+		if modeChanged || !slices.Contains(combos, c) {
+			p.env.UnregisterHotkey(c)
+		} else {
+			registered = append(registered, c)
+		}
+	}
+	for _, c := range combos {
+		if !modeChanged && slices.Contains(oldCombos, c) {
+			continue
 		}
 		suppress := mode == "hold"
-		if runtime.GOOS == "windows" && combo.IsModifierOnly() {
+		if runtime.GOOS == "windows" && c.IsModifierOnly() {
 			suppress = false
 		}
 		opts := hotkey.RegisterOptions{Suppress: suppress}
-		if err := p.env.RegisterHotkeyWithOptions(combo, opts, p.onHotkey); err != nil {
-			return fmt.Errorf("register hotkey: %w", err)
+		if err := p.env.RegisterHotkeyWithOptions(c, opts, p.onHotkey); err != nil {
+			// Remember only what is actually registered so the next reload
+			// retries the failed combo instead of assuming it is in place.
+			p.mu.Lock()
+			p.combos = registered
+			p.mu.Unlock()
+			return fmt.Errorf("register hotkey %s: %w", c, err)
 		}
-		p.logger.Info("hotkey_registered", "combo", combo, "suppress", opts.Suppress)
+		registered = append(registered, c)
+		p.logger.Info("hotkey_registered", "combo", c, "suppress", opts.Suppress)
 	}
 	return nil
 }
@@ -440,13 +466,14 @@ func (p *VoicePlugin) handleHotkey(evt hotkey.Event) {
 	switch mode {
 	case "hold":
 		if evt.Type == hotkey.KeyDown {
+			p.setHeld(evt.Combo, true)
 			p.clearHoldReleased()
 			if stopping {
 				p.cancelStopDelay()
 			} else if !rec {
 				p.startRecording()
 			}
-		} else if evt.Type == hotkey.KeyUp {
+		} else if evt.Type == hotkey.KeyUp && !p.setHeld(evt.Combo, false) {
 			p.markHoldReleased()
 		}
 	case "toggle":
@@ -508,6 +535,22 @@ func (p *VoicePlugin) clearHoldReleased() {
 	p.mu.Lock()
 	p.holdReleased = false
 	p.mu.Unlock()
+}
+
+// setHeld records a hold-mode hotkey press or release and reports whether any
+// voice hotkey is still held afterwards.
+func (p *VoicePlugin) setHeld(combo hotkey.Combo, down bool) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if down {
+		if p.heldCombos == nil {
+			p.heldCombos = make(map[hotkey.Combo]bool)
+		}
+		p.heldCombos[combo] = true
+	} else {
+		delete(p.heldCombos, combo)
+	}
+	return len(p.heldCombos) > 0
 }
 
 func (p *VoicePlugin) markHoldReleased() {

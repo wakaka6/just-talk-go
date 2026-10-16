@@ -83,7 +83,7 @@ func New(cfg *config.Config) *Model {
 	positions := overlayPositionOptions(cfg.Overlay.Position)
 	fs := []field{
 		{label: "语音输入", key: "enabled", help: "关闭后不注册热键", fType: fToggle, boolVal: vc.Enabled},
-		{label: "热键", key: "push_to_talk", help: "例: Alt+Super / F9 / Ctrl+Alt+Tab；不支持字母、数字、标点、空格等普通字符键", fType: fString, input: ti(vc.PushToTalk)},
+		{label: "热键", key: "push_to_talk", help: "例: Alt+Super / F9 / Ctrl+Alt+Tab；多个用逗号分隔，如 Fn, F13；不支持字母、数字、标点、空格等普通字符键", fType: fString, input: ti(vc.PushToTalk)},
 		{label: "模式", key: "mode", help: "toggle 切换 / hold 按住", fType: fSelect, opts: []string{"toggle", "hold"}, optIdx: idxOf([]string{"toggle", "hold"}, vc.Mode)},
 		{label: "引擎", key: "engine", help: "回车选择识别引擎；流式引擎支持实时字幕", fType: fAction},
 		{label: "引擎配置", key: "engine_config", help: "回车配置当前引擎的凭据与参数；各引擎独立保存", fType: fAction},
@@ -273,22 +273,24 @@ func (m *Model) save() {
 			next.Overlay.Position = f.opts[f.optIdx]
 		}
 	}
-	combo, err := config.ParseHotkey(vc.PushToTalk)
+	combos, err := config.ParseHotkeyList(vc.PushToTalk)
 	if err != nil {
 		m.logf("❌ 热键格式错误: %s", err)
 		m.restorePushToTalkField()
 		return
 	}
-	if combo.Mods&hotkey.ModFn != 0 && combo.Key.IsFunctionKey() {
-		m.logf("❌ Fn 不能与 F1-F24 等功能键组合")
-		m.restorePushToTalkField()
-		return
-	}
-	if combo.Key.IsTextKey() && combo.Mods&hotkey.ModFn == 0 {
-		m.logf("❌ 热键不支持普通字符键: %s", combo)
-		m.logf("   请使用 Alt+Super、F9、Alt+F8、Ctrl+Alt+Tab 等全局快捷键")
-		m.restorePushToTalkField()
-		return
+	for _, combo := range combos {
+		if combo.Mods&hotkey.ModFn != 0 && combo.Key.IsFunctionKey() {
+			m.logf("❌ Fn 不能与 F1-F24 等功能键组合: %s", combo)
+			m.restorePushToTalkField()
+			return
+		}
+		if combo.Key.IsTextKey() && combo.Mods&hotkey.ModFn == 0 {
+			m.logf("❌ 热键不支持普通字符键: %s", combo)
+			m.logf("   请使用 Alt+Super、F9、Alt+F8、Ctrl+Alt+Tab 等全局快捷键")
+			m.restorePushToTalkField()
+			return
+		}
 	}
 	positionChanged := next.Overlay.Position != m.cfg.Overlay.Position
 	m.cfg = &next
@@ -323,8 +325,16 @@ func (m *Model) restorePushToTalkField() {
 }
 
 func validVoiceHotkeyString(value string) bool {
-	combo, err := config.ParseHotkey(value)
-	return err == nil && (combo.Mods&hotkey.ModFn == 0 || !combo.Key.IsFunctionKey()) && (combo.Mods&hotkey.ModFn != 0 || !combo.Key.IsTextKey())
+	combos, err := config.ParseHotkeyList(value)
+	if err != nil {
+		return false
+	}
+	for _, combo := range combos {
+		if (combo.Mods&hotkey.ModFn != 0 && combo.Key.IsFunctionKey()) || (combo.Mods&hotkey.ModFn == 0 && combo.Key.IsTextKey()) {
+			return false
+		}
+	}
+	return true
 }
 
 func splitList(s string) []string {

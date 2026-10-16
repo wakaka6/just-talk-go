@@ -163,6 +163,8 @@ Voice hotkeys only accept keys suitable for global shortcuts:
 
 On Windows, the low-level keyboard hook only observes key edges and never consumes or replays modifiers, so standalone `Alt`, `Super`, and system shortcuts such as `Alt+Tab` keep their normal behavior.
 
+`push_to_talk` accepts several hotkeys separated by commas, e.g. `push_to_talk = "Fn, F13"`: `Fn` on the built-in keyboard, Print Screen on an external PC keyboard (macOS reports it as `F13`). Any of them starts/stops recording; in `hold` mode recording stops only after every held hotkey is released. A comma written right after `+` (e.g. `Fn+,`) is still the comma key. The `Fn` key of Logitech and other third-party keyboards is handled in keyboard firmware and never reaches the OS, so it cannot be used as a hotkey.
+
 ### TUI keys
 
 | Key | Action |

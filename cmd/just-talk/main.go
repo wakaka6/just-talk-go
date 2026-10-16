@@ -90,9 +90,13 @@ func main() {
 		*backend = os.Getenv("JUST_TALK_BACKEND")
 	}
 	if *backend == "" && runtime.GOOS == "linux" {
-		if combo, parseErr := config.ParseHotkey(cfg.Voice.PushToTalk); parseErr == nil && combo.Mods&hotkey.ModFn != 0 {
-			// Linux exposes Fn through evdev; X11 does not provide a portable Fn keysym.
-			*backend = "wayland"
+		combos, _ := config.ParseHotkeyList(cfg.Voice.PushToTalk)
+		for _, combo := range combos {
+			if combo.Mods&hotkey.ModFn != 0 {
+				// Linux exposes Fn through evdev; X11 does not provide a portable Fn keysym.
+				*backend = "wayland"
+				break
+			}
 		}
 	}
 	if *backend != "" {
