@@ -35,7 +35,7 @@ On displays without a notch (external monitors or notch-less models) the same in
 - Doubao large-model streaming ASR (optimized bidirectional streaming plus a second pass) with hotword boosting.
 - Automatic clipboard copy, with optional auto-submit into the focused field.
 - Recording overlay: on macOS it expands from the notch and shows live recognized text, mic level, and the final result; Linux (Wayland/X11) and Windows get an always-on-top status capsule.
-- TUI configuration for hotkeys, mode, auto-submit, stop delay, hotwords, and overlay position — saved changes apply immediately without a restart.
+- Desktop settings window with a menu bar/tray icon for hotkeys (primary and secondary slots, recorded by clicking a slot and pressing the combo), mode, recognition engine and credentials, auto-submit, stop delay, hotwords, and overlay position — saved changes apply immediately without a restart. The same page opens in a browser with `--web`, and `--tui` keeps the terminal UI.
 - Usage statistics: total sessions, recognized characters, average speed, and recent speed.
 - `Esc` cancels a recording; `R` retries after a retryable error.
 
@@ -47,6 +47,8 @@ On displays without a notch (external monitors or notch-less models) the same in
 | Linux X11 | Supported | Native X11 global hotkeys and overlay, XTest auto-submit |
 | macOS | Supported | CGEventTap hotkeys, CoreAudio recording, NSPasteboard clipboard, AppKit NSPanel overlay; requires Accessibility and Microphone permissions |
 | Windows 10/11 | Supported | Global key polling plus a low-level keyboard-hook edge fallback, WinMM recording, Unicode clipboard, SendInput auto-submit, and a topmost Win32 overlay |
+
+The settings window uses the system webview. Linux builds link GTK 3 + WebKitGTK 4.1, so its runtime must be installed (`libwebkit2gtk-4.1-0` on Debian/Ubuntu, `webkit2gtk-4.1` on Arch); build with `-tags nogui` if you only use the TUI. Windows uses WebView2 (built into Windows 11); without it Just Talk falls back to the TUI and prints where to install it.
 
 ## Installation
 
@@ -74,16 +76,16 @@ Available archives: Linux amd64 / arm64, macOS Intel / Apple Silicon, Windows am
 <details>
 <summary>Build dependencies and install steps</summary>
 
-Just Talk relies on native platform APIs. Linux and macOS builds require cgo; Windows calls Win32 directly from Go and does not need cgo.
+Just Talk relies on native platform APIs. Linux and macOS builds require cgo; Windows calls Win32 directly from Go and does not need cgo. The desktop window is built with [Wails v3](https://github.com/wailsapp/wails) on the system webview: WKWebView on macOS, WebView2 on Windows, and GTK 3 + WebKitGTK 4.1 on Linux.
 
 Linux build dependencies:
 
 ```bash
 # Arch Linux
-sudo pacman -S --needed go gcc libx11 libxtst libxext wayland
+sudo pacman -S --needed go gcc libx11 libxtst libxext wayland gtk3 webkit2gtk-4.1
 
 # Debian / Ubuntu
-sudo apt install golang-go build-essential libx11-dev libxtst-dev libxext-dev libxinerama-dev libwayland-dev
+sudo apt install golang-go build-essential libx11-dev libxtst-dev libxext-dev libxinerama-dev libwayland-dev libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 
 macOS needs Apple Command Line Tools (clang and the macOS SDK; full Xcode is not required):
@@ -101,10 +103,15 @@ winget install --id GoLang.Go --exact
 Build:
 
 ```bash
+# macOS
 CGO_ENABLED=1 go build -o build/just-talk ./cmd/just-talk
+# Linux (the desktop window uses GTK 3 + WebKitGTK 4.1)
+CGO_ENABLED=1 go build -tags gtk3 -o build/just-talk ./cmd/just-talk
 # Windows PowerShell:
 # go build -o build\just-talk.exe .\cmd\just-talk
 ```
+
+Add `-tags nogui` to build without the desktop window: the binary does not link a webview and starts the TUI when run without flags.
 
 Install for the current user (`~/.local/bin` on Linux/macOS, `%LOCALAPPDATA%\Programs\Just Talk` on Windows):
 
@@ -122,7 +129,7 @@ If the install directory is not on your `PATH`, follow the hint printed by the c
 
 1. Obtain Doubao large-model ASR credentials (App Key / Access Key).
 2. Run `just-talk --doctor` to check the microphone, clipboard tools, and permissions.
-3. Run `just-talk` to open the TUI, press Enter on “引擎” to pick a channel (Doubao streaming by default), fill in credentials in the engine config modal, then press `s` to save.
+3. Run `just-talk` to open the settings window, pick a channel under “识别引擎” (Doubao streaming by default), fill in its credentials, and click “保存” (or press `Cmd/Ctrl+S`). Closing the window keeps Just Talk running. Left-click the menu bar/tray icon for a small panel with the live state, the latest transcript, usage statistics, and the current settings; its “打开设置” button reopens the settings window. Right-click opens the tray menu. Quit with “退出” in the panel or the tray menu. Prefer the terminal? Run `just-talk --tui`.
 4. Press the `push_to_talk` hotkey (default `Alt+Super`; `Option+Command` on macOS) to start/stop recording. Recognized text is copied to the clipboard and, when `auto_submit` is on, submitted into the focused field.
 
 ### Permissions
@@ -168,6 +175,8 @@ On Windows, the low-level keyboard hook only observes key edges and never consum
 
 ### TUI keys
 
+Start the TUI with `just-talk --tui`.
+
 | Key | Action |
 | --- | --- |
 | `j` / `k` / arrows | Move selection |
@@ -178,7 +187,7 @@ On Windows, the low-level keyboard hook only observes key edges and never consum
 | `h` | Toggle help |
 | `q` / `Ctrl+C` | Quit |
 
-After changing the engine or its credentials in the TUI, press `s` to save — the next recording uses the new configuration. An in-progress session keeps the configuration used to establish its connection.
+After saving the engine or its credentials in the settings window or the TUI, the next recording uses the new configuration. An in-progress session keeps the configuration used to establish its connection.
 
 ## Configuration
 
@@ -248,8 +257,10 @@ hotkeys = []                       # extra hotkeys registered by the debug plugi
 ```text
 just-talk [flags]
 
--tui                 Run with the TUI (default)
--no-tui              Daemon mode; logs to stderr
+                     (no flags: menu bar/tray app with the settings window)
+-tui                 Run the terminal UI instead of the desktop window
+-web                 Serve the settings page to a browser on 127.0.0.1; prints a link carrying this run's key
+-no-tui              Daemon mode without any UI; logs to stderr
 -backend <name>      Force a backend: x11 | wayland | darwin (or JUST_TALK_BACKEND)
 -config <path>       Use a specific config file
 -doctor              Run startup environment checks and exit
@@ -268,8 +279,9 @@ just-talk [flags]
 ```bash
 make build          # Build for the current platform
 make run            # Build and run
-go test ./...       # Run all tests
-go test ./... -tags no_x11    # Test without X11
+go test ./...       # Run all tests (add -tags gtk3 on Linux)
+go test ./... -tags "gtk3 no_x11"    # Test without X11 (Linux)
+go build -tags nogui ./cmd/just-talk    # Build without the desktop window
 goreleaser check    # Validate .goreleaser.yaml
 ```
 
@@ -280,7 +292,9 @@ JUST_TALK_TEST_WINDOWS_AUDIO=1 go test ./plugins/voice -run TestWindowsRecorderI
 JUST_TALK_TEST_WINDOWS_HOTKEY=1 go test ./hotkey -run TestWindowsHookIntegration -v
 ```
 
-In TUI mode, normal logs go to the log file and the in-app log area so they do not corrupt the Bubble Tea layout; debug details are only visible with `--debug`.
+In TUI and desktop window modes, normal logs go to the log file and the in-app log area so they do not corrupt the Bubble Tea layout (the window falls back to the TUI when it cannot open); debug details are only visible with `--debug`.
+
+The settings page is plain HTML/CSS/JS embedded in the binary (`internal/gui/assets`). It talks to Go over a JSON API on the same handler and is shared by the desktop window and `--web`, so there is no frontend build step.
 
 </details>
 

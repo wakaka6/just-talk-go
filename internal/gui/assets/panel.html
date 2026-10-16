@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Just Talk</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body class="panel">
+  <header class="panel-head">
+    <img class="logo" src="icon.svg" alt="">
+    <strong>Just Talk</strong>
+    <div id="status" class="status" data-state="idle">
+      <span class="dot"></span>
+      <span id="statusLabel">待机</span>
+    </div>
+  </header>
+
+  <section class="panel-body">
+    <div id="last" class="last">
+      <span class="muted">最近一次识别</span>
+      <p id="lastText" class="last-text"></p>
+    </div>
+
+    <div class="stats panel-stats" aria-label="统计">
+      <div class="stat"><span class="muted">累计识别</span><b id="statSessions">0</b><span class="muted">次</span></div>
+      <div class="stat"><span class="muted">总字数</span><b id="statChars">0</b></div>
+      <div class="stat"><span class="muted">平均速度</span><b id="statAvg">0</b><span class="muted">字/分</span></div>
+      <div class="stat"><span class="muted">最近速度</span><b id="statLast">0</b><span class="muted">字/分</span></div>
+    </div>
+
+    <div id="summary" class="group summary"></div>
+  </section>
+
+  <footer class="panel-foot">
+    <button type="button" id="quit" class="ghost">退出</button>
+    <button type="button" id="settings">打开设置</button>
+  </footer>
+
+  <script src="common.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

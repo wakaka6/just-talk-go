@@ -37,7 +37,7 @@ var (
 )
 
 var TUILog func(string)
-var TUILogBuf []string
+var tuiLogBuf []LogEntry
 var tuilogMu sync.Mutex
 var outputMu sync.Mutex
 var outputWriter io.Writer = os.Stdout
@@ -95,9 +95,16 @@ func SetOutput(w io.Writer) {
 func SetupTUILog() {
 	TUILog = func(msg string) {
 		tuilogMu.Lock()
-		TUILogBuf = append(TUILogBuf, msg)
-		if len(TUILogBuf) > 200 {
-			TUILogBuf = TUILogBuf[len(TUILogBuf)-100:]
+		entry := LogEntry{Time: time.Now(), Text: msg}
+		// A streaming partial ("\r…") replaces the one before it, so one
+		// dictation cannot push earlier sessions out of the buffer.
+		if n := len(tuiLogBuf); n > 0 && isPartialLog(msg) && isPartialLog(tuiLogBuf[n-1].Text) {
+			tuiLogBuf[n-1] = entry
+		} else {
+			tuiLogBuf = append(tuiLogBuf, entry)
+		}
+		if len(tuiLogBuf) > 200 {
+			tuiLogBuf = tuiLogBuf[len(tuiLogBuf)-100:]
 		}
 		tuilogMu.Unlock()
 	}
@@ -106,8 +113,37 @@ func SetupTUILog() {
 func DisableTUILog() {
 	tuilogMu.Lock()
 	TUILog = nil
-	TUILogBuf = nil
+	tuiLogBuf = nil
 	tuilogMu.Unlock()
+}
+
+// LogEntry is one buffered voice log line and when it was written.
+type LogEntry struct {
+	Time time.Time
+	Text string
+}
+
+// isPartialLog reports a streaming partial result line, written as "\r🎤 …".
+func isPartialLog(msg string) bool {
+	return strings.HasPrefix(msg, "\r")
+}
+
+// TUILogs returns a copy of the buffered voice log lines, oldest first.
+func TUILogs() []string {
+	tuilogMu.Lock()
+	defer tuilogMu.Unlock()
+	lines := make([]string, len(tuiLogBuf))
+	for i, e := range tuiLogBuf {
+		lines[i] = e.Text
+	}
+	return lines
+}
+
+// TUILogEntries returns a copy of the buffered voice log, oldest first.
+func TUILogEntries() []LogEntry {
+	tuilogMu.Lock()
+	defer tuilogMu.Unlock()
+	return append([]LogEntry(nil), tuiLogBuf...)
 }
 
 func TUIStats() TUIVoiceStats {

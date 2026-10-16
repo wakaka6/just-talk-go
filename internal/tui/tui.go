@@ -7,6 +7,7 @@ import (
 
 	"github.com/c/just-talk-go/config"
 	"github.com/c/just-talk-go/hotkey"
+	"github.com/c/just-talk-go/internal/settings"
 	"github.com/c/just-talk-go/plugins/voice"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -80,7 +81,7 @@ type Model struct {
 func New(cfg *config.Config) *Model {
 	vc := cfg.Voice
 	ti := func(v string) textinput.Model { t := textinput.New(); t.SetValue(v); t.Cursor.Blink = false; return t }
-	positions := overlayPositionOptions(cfg.Overlay.Position)
+	positions := settings.OverlayPositionOptions(cfg.Overlay.Position)
 	fs := []field{
 		{label: "语音输入", key: "enabled", help: "关闭后不注册热键", fType: fToggle, boolVal: vc.Enabled},
 		{label: "热键", key: "push_to_talk", help: "例: Alt+Super / F9 / Ctrl+Alt+Tab；多个用逗号分隔，如 Fn, F13；不支持字母、数字、标点、空格等普通字符键", fType: fString, input: ti(vc.PushToTalk)},
@@ -94,17 +95,6 @@ func New(cfg *config.Config) *Model {
 		{label: "提示位置", key: "overlay_position", help: "notch 为 macOS 刘海，其他平台按 top-center 处理；保存后立即生效", fType: fSelect, opts: positions, optIdx: idxOf(positions, cfg.Overlay.Position)},
 	}
 	return &Model{cfg: cfg, fields: fs, logs: make([]string, 0, 100), cursor: -1, showLogs: true}
-}
-
-var overlayPositions = []string{"notch", "top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"}
-
-// overlayPositionOptions keeps a configured value outside the known list
-// selectable, so saving from the TUI never rewrites it silently.
-func overlayPositionOptions(current string) []string {
-	if idx := idxOf(overlayPositions, current); overlayPositions[idx] == current {
-		return overlayPositions
-	}
-	return append(append([]string(nil), overlayPositions...), current)
 }
 
 func (m *Model) SetDebug(debug bool) {
@@ -268,29 +258,15 @@ func (m *Model) save() {
 		case "stop_delay_ms":
 			fmt.Sscanf(f.input.Value(), "%d", &vc.StopDelayMs)
 		case "hotwords":
-			vc.Hotwords = splitList(f.input.Value())
+			vc.Hotwords = settings.SplitList(f.input.Value())
 		case "overlay_position":
 			next.Overlay.Position = f.opts[f.optIdx]
 		}
 	}
-	combos, err := config.ParseHotkeyList(vc.PushToTalk)
-	if err != nil {
-		m.logf("❌ 热键格式错误: %s", err)
+	if err := settings.ValidateHotkeys(vc.PushToTalk); err != nil {
+		m.logf("❌ %s", err)
 		m.restorePushToTalkField()
 		return
-	}
-	for _, combo := range combos {
-		if combo.Mods&hotkey.ModFn != 0 && combo.Key.IsFunctionKey() {
-			m.logf("❌ Fn 不能与 F1-F24 等功能键组合: %s", combo)
-			m.restorePushToTalkField()
-			return
-		}
-		if combo.Key.IsTextKey() && combo.Mods&hotkey.ModFn == 0 {
-			m.logf("❌ 热键不支持普通字符键: %s", combo)
-			m.logf("   请使用 Alt+Super、F9、Alt+F8、Ctrl+Alt+Tab 等全局快捷键")
-			m.restorePushToTalkField()
-			return
-		}
 	}
 	positionChanged := next.Overlay.Position != m.cfg.Overlay.Position
 	m.cfg = &next
@@ -312,7 +288,7 @@ func (m *Model) save() {
 
 func (m *Model) restorePushToTalkField() {
 	value := m.cfg.Voice.PushToTalk
-	if !validVoiceHotkeyString(value) {
+	if settings.ValidateHotkeys(value) != nil {
 		value = config.Default().Voice.PushToTalk
 	}
 	for i := range m.fields {
@@ -324,38 +300,6 @@ func (m *Model) restorePushToTalkField() {
 	m.logf("↩️  热键已恢复为 %s", value)
 }
 
-func validVoiceHotkeyString(value string) bool {
-	combos, err := config.ParseHotkeyList(value)
-	if err != nil {
-		return false
-	}
-	for _, combo := range combos {
-		if (combo.Mods&hotkey.ModFn != 0 && combo.Key.IsFunctionKey()) || (combo.Mods&hotkey.ModFn == 0 && combo.Key.IsTextKey()) {
-			return false
-		}
-	}
-	return true
-}
-
-func splitList(s string) []string {
-	parts := strings.FieldsFunc(s, func(r rune) bool {
-		return r == ',' || r == '，' || r == '\n'
-	})
-	out := make([]string, 0, len(parts))
-	seen := make(map[string]struct{}, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		if _, ok := seen[part]; ok {
-			continue
-		}
-		seen[part] = struct{}{}
-		out = append(out, part)
-	}
-	return out
-}
 func (m *Model) View() string {
 	if !m.ready {
 		return "loading..."
@@ -397,11 +341,12 @@ func (m *Model) View() string {
 			b.WriteString("  " + dStyle.Render(l) + "\n")
 		}
 		// Voice plugin logs
+		voiceLogs := voice.TUILogs()
 		sv := 0
-		if len(voice.TUILogBuf) > maxLogs {
-			sv = len(voice.TUILogBuf) - maxLogs
+		if len(voiceLogs) > maxLogs {
+			sv = len(voiceLogs) - maxLogs
 		}
-		for _, l := range voice.TUILogBuf[sv:] {
+		for _, l := range voiceLogs[sv:] {
 			b.WriteString("  " + dStyle.Render(l) + "\n")
 		}
 	}
@@ -514,17 +459,17 @@ func (m *Model) renderField(i int, f field) string {
 	case fAction:
 		switch f.key {
 		case "engine":
-			meta := metaFor(m.currentEngine())
+			meta := settings.EngineFor(m.currentEngine())
 			var tag string
-			if meta.streaming {
+			if meta.Streaming {
 				tag = aStyle.Render(" [流式]")
 			} else {
 				tag = dStyle.Render(" [整段]")
 			}
-			return vStyle.Render(meta.name) + tag + " " + dStyle.Render("(回车选择)")
+			return vStyle.Render(meta.Name) + tag + " " + dStyle.Render("(回车选择)")
 		case "engine_config":
 			engine := m.currentEngine()
-			if engineConfigured(m.cfg.Voice, engine) {
+			if settings.EngineConfigured(m.cfg.Voice, engine) {
 				return aStyle.Render("已配置") + " " + dStyle.Render("(回车修改)")
 			}
 			return wStyle.Render("缺少必填项") + " " + dStyle.Render("(回车配置)")

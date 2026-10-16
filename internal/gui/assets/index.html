@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Just Talk</title>
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <img class="logo" src="icon.svg" alt="">
+    <div class="brand">
+      <strong>Just Talk</strong>
+      <span class="muted">减少用键盘的次数，改用口喷吧。</span>
+    </div>
+    <div id="status" class="status" data-state="idle">
+      <span class="dot"></span>
+      <span id="statusLabel">待机</span>
+      <span id="statusDetail" class="muted"></span>
+    </div>
+  </header>
+
+  <nav class="toolbar">
+    <div class="tabs" role="tablist" aria-label="设置分区">
+      <button type="button" role="tab" id="tab-general" aria-controls="pane-general" data-pane="general">通用</button>
+      <button type="button" role="tab" id="tab-engine" aria-controls="pane-engine" data-pane="engine">识别引擎</button>
+      <button type="button" role="tab" id="tab-activity" aria-controls="pane-activity" data-pane="activity">活动</button>
+    </div>
+  </nav>
+
+  <main>
+    <p id="loadError" class="banner error" hidden></p>
+
+    <form id="form" autocomplete="off" novalidate>
+      <section id="pane-general" class="pane" role="tabpanel" aria-labelledby="tab-general">
+        <div class="group">
+          <label class="row">
+            <span class="label">启用语音输入<small>关闭后不注册热键</small></span>
+            <input type="checkbox" class="switch" name="enabled">
+          </label>
+        </div>
+
+        <h2 class="group-title">快捷键</h2>
+        <div class="group">
+          <div class="row hotkey-row">
+            <span class="label">热键<small>点击插槽后按下快捷键：纯修饰键（如 Option+Command）、F1–F24，或修饰键加 Tab、方向键等；不支持普通字符键</small></span>
+            <div class="hotkeys">
+              <div id="slots" class="slots"></div>
+              <p id="hotkeyError" class="field-error" role="alert" hidden></p>
+              <p id="hotkeyExtra" class="field-note" hidden></p>
+              <button type="button" id="manualToggle" class="link">手动编辑</button>
+              <input type="text" name="pushToTalk" id="pushToTalk" spellcheck="false" hidden
+                placeholder="Alt+Super, F13" aria-label="热键列表，逗号分隔">
+            </div>
+          </div>
+          <div class="row">
+            <span class="label">模式<small>切换：按一下开始、再按一下结束；按住：按住说话、松开结束</small></span>
+            <div class="segmented" id="modes" role="radiogroup" aria-label="模式"></div>
+          </div>
+          <label class="row">
+            <span class="label">停止延迟<small>松开或停止后继续录音的时长，避免吞掉最后一个字</small></span>
+            <span class="unit"><input type="number" name="stopDelayMs" min="0" step="50"><span class="muted">毫秒</span></span>
+          </label>
+        </div>
+
+        <h2 class="group-title">识别</h2>
+        <div class="group">
+          <label class="row">
+            <span class="label">语言<small>说话所用的语言；自动检测由引擎判断</small></span>
+            <select name="language" id="language"></select>
+          </label>
+          <div class="row hotword-row">
+            <span class="label">热词<small>专有名词、人名、产品名等，提升识别准确率</small></span>
+            <div id="hotwords" class="chips">
+              <input type="text" id="hotwordInput" spellcheck="false" placeholder="添加热词，回车确认" aria-label="添加热词">
+            </div>
+          </div>
+        </div>
+
+        <h2 class="group-title">输出</h2>
+        <div class="group">
+          <label class="row">
+            <span class="label">自动上屏<small>识别完成后粘贴到当前输入框；关闭则只复制到剪贴板</small></span>
+            <input type="checkbox" class="switch" name="autoSubmit">
+          </label>
+          <label class="row">
+            <span class="label">提示位置<small>录音状态提示显示在屏幕上的位置；刘海在其他平台按顶部居中处理</small></span>
+            <select name="overlayPosition" id="overlayPosition"></select>
+          </label>
+        </div>
+      </section>
+
+      <section id="pane-engine" class="pane" role="tabpanel" aria-labelledby="tab-engine" hidden>
+        <p class="pane-intro">选择用于语音识别的服务。流式引擎边说边出字；整段引擎在说完后一次返回结果。</p>
+        <div id="engines" class="group engines" role="radiogroup" aria-label="识别引擎"></div>
+      </section>
+    </form>
+
+    <section id="pane-activity" class="pane" role="tabpanel" aria-labelledby="tab-activity" hidden>
+      <div class="stats" aria-label="统计">
+        <div class="stat"><span class="muted">累计识别</span><b id="statSessions">0</b><span class="muted">次</span></div>
+        <div class="stat"><span class="muted">总字数</span><b id="statChars">0</b></div>
+        <div class="stat"><span class="muted">平均速度</span><b id="statAvg">0</b><span class="muted">字/分钟</span></div>
+        <div class="stat"><span class="muted">最近速度</span><b id="statLast">0</b><span class="muted">字/分钟</span></div>
+      </div>
+      <h2 class="group-title">最近活动</h2>
+      <ol id="logs" class="group timeline" aria-live="polite"></ol>
+    </section>
+  </main>
+
+  <div id="sheet" class="sheet-backdrop" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <div class="sheet-head">
+        <h2 id="sheetTitle"></h2>
+        <p id="sheetBlurb" class="muted"></p>
+      </div>
+      <div id="sheetFields" class="group"></div>
+      <details id="sheetAdvanced" class="advanced">
+        <summary id="sheetAdvancedLabel">高级选项</summary>
+        <div id="sheetAdvancedFields" class="group"></div>
+      </details>
+      <div class="sheet-foot">
+        <button type="button" id="sheetDoc" class="link">查看文档</button>
+        <span class="spacer"></span>
+        <button type="button" id="sheetCancel" class="ghost">取消</button>
+        <button type="button" id="sheetDone">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="savebar">
+    <span id="configPath" class="muted path"></span>
+    <span id="message" class="message" role="status"></span>
+    <button type="button" id="revert" class="ghost" disabled>还原</button>
+    <button type="button" id="save" disabled>保存</button>
+  </footer>
+
+  <script src="common.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

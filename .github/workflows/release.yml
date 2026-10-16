@@ -84,12 +84,16 @@ jobs:
             libxext-dev \
             libxinerama-dev \
             libxrender-dev \
-            libxtst-dev
+            libxtst-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev
 
       - name: Test
         if: matrix.goarch == 'amd64'
         env:
           CGO_ENABLED: ${{ matrix.cgo_enabled }}
+          # The desktop window uses GTK 3 + WebKitGTK 4.1 on Linux.
+          GOFLAGS: ${{ matrix.goos == 'linux' && '-tags=gtk3' || '' }}
         run: go test ./...
 
       - name: Build archive with GoReleaser

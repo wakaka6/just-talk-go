@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,11 +11,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/c/just-talk-go/config"
 	"github.com/c/just-talk-go/engine"
 	"github.com/c/just-talk-go/hotkey"
 	"github.com/c/just-talk-go/internal/doctor"
+	"github.com/c/just-talk-go/internal/gui"
 	"github.com/c/just-talk-go/internal/tui"
 	"github.com/c/just-talk-go/plugins"
 	"github.com/c/just-talk-go/plugins/overlay"
@@ -27,8 +30,9 @@ func main() {
 	cfgPath := flag.String("config", "", "path to config file")
 	debug := flag.Bool("debug", false, "enable debug plugin")
 	verbose := flag.Bool("verbose", false, "verbose logging")
-	useTUI := flag.Bool("tui", true, "run with terminal UI")
-	noTUI := flag.Bool("no-tui", false, "run without terminal UI")
+	useTUI := flag.Bool("tui", false, "run with the terminal UI instead of the desktop window")
+	noTUI := flag.Bool("no-tui", false, "run without any UI (daemon mode)")
+	useWeb := flag.Bool("web", false, "serve the settings page to a browser on 127.0.0.1 instead of the desktop window")
 	doctorOnly := flag.Bool("doctor", false, "run startup doctor and exit")
 	installOnly := flag.Bool("install", false, "install just-talk for the current user")
 	overlayHelper := flag.Bool("overlay-helper", false, "run macOS overlay helper")
@@ -49,8 +53,15 @@ func main() {
 		}
 		return
 	}
-	if *noTUI {
-		*useTUI = false
+	// Without a flag Just Talk runs as a tray app with a settings window.
+	mode := "app"
+	switch {
+	case *noTUI:
+		mode = "daemon"
+	case *useWeb:
+		mode = "web"
+	case *useTUI:
+		mode = "tui"
 	}
 
 	logLevel := slog.LevelInfo
@@ -58,11 +69,12 @@ func main() {
 		logLevel = slog.LevelDebug
 	}
 
-	// Daemon mode: log to stderr + file. TUI mode: file only (stderr corrupts display).
+	// Daemon and web modes: log to stderr + file. TUI and app modes: file
+	// only (stderr corrupts the TUI, which is also the app's fallback).
 	logPath := defaultLogPath()
 	_ = os.MkdirAll(filepath.Dir(logPath), 0755)
 	var logWriter io.Writer
-	if *useTUI {
+	if mode == "tui" || mode == "app" {
 		lf, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if lf != nil {
 			logWriter = lf
@@ -122,7 +134,8 @@ func main() {
 
 	eng := engine.New(provider, cfg, logger)
 
-	if *debug && cfg.Debug.Enabled && !*useTUI {
+	// The debug plugin prints to stdout, which only daemon and web modes own.
+	if *debug && cfg.Debug.Enabled && (mode == "daemon" || mode == "web") {
 		eng.LoadPlugin(plugins.NewDebugPlugin())
 	}
 	eng.LoadPlugin(voice.NewVoicePlugin())
@@ -131,10 +144,15 @@ func main() {
 		eng.WatchConfig(p)
 	}
 
-	if *useTUI {
+	switch mode {
+	case "tui":
 		runTUI(eng, cfg, *debug)
-	} else {
+	case "web":
+		runWeb(eng, cfg, *debug)
+	case "daemon":
 		runDaemon(eng)
+	default:
+		runApp(eng, cfg, *debug, logger)
 	}
 }
 
@@ -144,6 +162,76 @@ func runDaemon(eng *engine.Engine) {
 		slog.Error("engine exited with error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func uiOptions(eng *engine.Engine, cfg *config.Config, debug bool) gui.Options {
+	return gui.Options{
+		Config:   cfg,
+		Apply:    eng.ReloadConfig,
+		Provider: eng.Provider().Info(),
+		Debug:    debug,
+	}
+}
+
+func runApp(eng *engine.Engine, cfg *config.Config, debug bool, logger *slog.Logger) {
+	voice.SetupTUILog()
+	voice.SetOutput(io.Discard)
+	done := make(chan struct{})
+	err := gui.RunApp(gui.AppOptions{
+		Options: uiOptions(eng, cfg, debug),
+		Logger:  logger,
+		Start: func(quit func()) {
+			go func() {
+				defer close(done)
+				if err := eng.Start(false); err != nil && err != context.Canceled {
+					slog.Error("engine error", "error", err)
+				}
+				quit()
+			}()
+		},
+		Stop: func() {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			eng.Stop()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				slog.Warn("engine did not stop in time")
+			}
+		},
+	})
+	if errors.Is(err, gui.ErrNoWindow) {
+		fmt.Fprintf(os.Stderr, "%v\nFalling back to the terminal UI; use --web for the settings page in a browser.\n", err)
+		time.Sleep(2 * time.Second)
+		runTUI(eng, cfg, debug)
+		return
+	}
+	if err != nil {
+		slog.Error("app exited with error", "error", err)
+		fmt.Fprintf(os.Stderr, "app error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runWeb(eng *engine.Engine, cfg *config.Config, debug bool) {
+	voice.SetupTUILog()
+	voice.SetOutput(io.Discard)
+	srv, err := gui.ListenWeb("127.0.0.1:0", gui.Handler(uiOptions(eng, cfg, debug)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "web UI failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "Just Talk settings: %s\n", srv.URL())
+	go func() {
+		if err := srv.Serve(); err != nil {
+			slog.Error("web UI stopped", "error", err)
+		}
+	}()
+	runDaemon(eng)
+	srv.Close()
 }
 
 func runTUI(eng *engine.Engine, cfg *config.Config, debug bool) {

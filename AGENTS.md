@@ -10,17 +10,19 @@ The supported desktop targets are Linux, macOS, and Windows.
 
 ## Build And Test
 
-This project uses native platform APIs. Linux and macOS require cgo; Windows uses direct Win32 calls and builds with `CGO_ENABLED=0`.
+This project uses native platform APIs. Linux and macOS require cgo; Windows uses direct Win32 calls and builds with `CGO_ENABLED=0`. The desktop window uses Wails v3: Linux builds need the `gtk3` tag (GTK 3 + WebKitGTK 4.1; the Makefile, GoReleaser config, and CI set it), and `-tags nogui` leaves the window out.
 
 ```bash
 make build              # Build for the current platform
 make run                # Run on the current platform
 make test               # Run all tests
-go test ./...           # Faster default test command
-go test ./... -tags no_x11
+go test ./...           # Faster default test command (add -tags gtk3 on Linux)
+go test ./... -tags "gtk3 no_x11"
 goreleaser check
-CGO_ENABLED=1 go build -o build/just-talk ./cmd/just-talk
+CGO_ENABLED=1 go build -o build/just-talk ./cmd/just-talk              # macOS
+CGO_ENABLED=1 go build -tags gtk3 -o build/just-talk ./cmd/just-talk   # Linux
 go build -o build/just-talk.exe ./cmd/just-talk  # Windows
+go build -tags nogui -o build/just-talk ./cmd/just-talk                # no desktop window
 JUST_TALK_TEST_WINDOWS_AUDIO=1 go test ./plugins/voice -run TestWindowsRecorderIntegration -v
 JUST_TALK_TEST_WINDOWS_HOTKEY=1 go test ./hotkey -run TestWindowsHookIntegration -v
 ```
@@ -32,7 +34,9 @@ Do not add or preserve non-cgo macOS fallback builds. A build that compiles but 
 Useful runtime commands:
 
 ```bash
-just-talk               # TUI mode, default
+just-talk               # tray app + settings window, default
+just-talk --tui         # TUI mode
+just-talk --web         # settings page in a browser (127.0.0.1, per-run key)
 just-talk --no-tui      # daemon mode
 just-talk --doctor      # startup environment check
 just-talk --backend x11
@@ -80,7 +84,7 @@ cmd/just-talk/main.go
   -> hotkey.NewProvider
   -> engine.New
   -> load voice + overlay plugins
-  -> TUI or daemon mode
+  -> desktop app (falls back to TUI), web, TUI, or daemon mode
 ```
 
 Core packages:
@@ -93,6 +97,8 @@ Core packages:
 - `internal/clipboard/`: platform clipboard implementation.
 - `internal/doctor/`: startup environment checks.
 - `internal/tui/`: Bubble Tea configuration UI.
+- `internal/gui/`: settings page shared by the Wails desktop window (`RunApp`, tray + window) and `--web` (`ListenWeb`); embedded HTML/CSS/JS in `assets/` talks to Go over a JSON API in `api.go`.
+- `internal/settings/`: engine catalog, per-engine fields, and hotkey validation shared by the TUI and GUI. Add engines and settings rules here, not in either UI.
 
 ## Hotkey Notes
 
@@ -114,9 +120,11 @@ Avoid double-output bugs: recognized final text should be dispatched once per us
 
 ## UI And Logging
 
-TUI mode must not write normal logs to stdout/stderr because it corrupts the Bubble Tea layout. TUI logs go through the in-app log/status area; debug event details should only be visible when `--debug` is enabled.
+TUI mode must not write normal logs to stdout/stderr because it corrupts the Bubble Tea layout. TUI logs go through the in-app log/status area; debug event details should only be visible when `--debug` is enabled. Desktop app mode logs to the file only as well, because it falls back to the TUI when the window cannot open (missing WebView2, `nogui` build).
 
-`voice.SetOutput(io.Discard)` is intentional in TUI mode.
+`voice.SetOutput(io.Discard)` is intentional in TUI, app, and web modes; their voice log is read through `voice.TUILogs()`.
+
+The settings page holds API keys. The desktop window serves it in-process through Wails; `--web` must stay on loopback behind the per-run key, Host, and Origin checks in `internal/gui/web.go`.
 
 ## Repository Rules
 

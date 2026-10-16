@@ -4,6 +4,13 @@ All notable project changes are tracked here.
 
 ## Unreleased
 
+- Add a desktop settings window with a menu bar/tray icon, now the default when `just-talk` runs without flags. It edits the same settings as the TUI (hotkeys, mode, engine and per-engine credentials, language, auto-submit, stop delay, hotwords, overlay position), shows the live recording state, usage statistics, and voice log, and applies saved changes immediately. Closing the window keeps Just Talk running; quit from the tray menu. A second launch brings the running window forward instead of starting another instance.
+- `--tui` now opens the terminal UI (previously the default); `--no-tui` stays daemon mode.
+- Left-clicking the menu bar/tray icon opens a compact panel with the live recording state, the latest transcript (with copy), usage statistics, and a summary of the current hotkeys, mode, engine, language, and output behavior. It hides when it loses focus; “打开设置” opens the settings window and right-click keeps the tray menu.
+- Hotkeys are set in the settings page by recording them: click the primary or secondary slot and press the combo (modifier-only combos such as Option+Command complete when a modifier is released; Esc cancels). Global hotkeys are paused while a slot records so the current hotkey can be re-recorded without starting a session. Both slots map onto the comma-separated `push_to_talk`; extra hotkeys from a hand-edited config are kept, and keys the webview cannot see can still be typed via “手动编辑”.
+- Add `--web` to open the same settings page in a browser. It listens on 127.0.0.1 only and prints a link carrying a per-run key; requests without it are refused.
+- The window uses the system webview (Wails v3). Linux builds now link GTK 3 + WebKitGTK 4.1 and need its runtime installed; Windows uses WebView2 and falls back to the TUI when it is missing. Build with `-tags nogui` to leave the window out.
+
 ## v0.3.0 - 2026-10-16
 
 - Support the PC keyboard menu key (`Menu`, also `Apps`/`Application`) as a hotkey on macOS, Linux, and Windows. On macOS it was previously dropped as an unknown key.

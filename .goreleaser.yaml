@@ -12,6 +12,9 @@ builds:
       - amd64
     env:
       - CGO_ENABLED={{ .Env.CGO_ENABLED }}
+    # The desktop window uses GTK 3 + WebKitGTK 4.1.
+    tags:
+      - gtk3
     flags:
       - -trimpath
     ldflags:
@@ -27,6 +30,9 @@ builds:
       - arm64
     env:
       - CGO_ENABLED={{ .Env.CGO_ENABLED }}
+    # The desktop window uses GTK 3 + WebKitGTK 4.1.
+    tags:
+      - gtk3
     flags:
       - -trimpath
     ldflags:

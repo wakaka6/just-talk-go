@@ -3,10 +3,12 @@
 APP_NAME := just-talk
 CMD_DIR := ./cmd/just-talk
 BUILD_DIR := ./build
+# The desktop window (Wails) uses GTK 3 + WebKitGTK 4.1 on Linux.
+GO_TAGS := $(if $(filter linux,$(shell go env GOOS)),gtk3,)
 
 # Build for current platform
 build:
-	go build -o $(BUILD_DIR)/$(APP_NAME) $(CMD_DIR)
+	go build -tags "$(GO_TAGS)" -o $(BUILD_DIR)/$(APP_NAME) $(CMD_DIR)
 
 # Install to ~/.local/bin
 install: build
@@ -14,11 +16,11 @@ install: build
 
 # Run (current platform)
 run:
-	go run $(CMD_DIR)
+	go run -tags "$(GO_TAGS)" $(CMD_DIR)
 
 # Test
 test:
-	go test ./... -v
+	go test -tags "$(GO_TAGS)" ./... -v
 
 # Clean
 clean:
