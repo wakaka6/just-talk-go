@@ -129,7 +129,7 @@ If the install directory is not on your `PATH`, follow the hint printed by the c
 
 1. Obtain Doubao large-model ASR credentials (App Key / Access Key).
 2. Run `just-talk --doctor` to check the microphone, clipboard tools, and permissions.
-3. Run `just-talk` to open the settings window, pick a channel under “识别引擎” (Doubao streaming by default), fill in its credentials, and click “保存” (or press `Cmd/Ctrl+S`). Closing the window keeps Just Talk running. Left-click the menu bar/tray icon for a small panel with the live state, the latest transcript, usage statistics, and the current settings; its “打开设置” button reopens the settings window. Right-click opens the tray menu. Quit with “退出” in the panel or the tray menu. Prefer the terminal? Run `just-talk --tui`.
+3. Run `just-talk` to open the settings window, pick a channel under “识别引擎” (Doubao streaming by default), fill in its credentials, and click “保存” (or press `Cmd/Ctrl+S`). Closing the window keeps Just Talk running. Left-click the menu bar/tray icon for a small panel with the live state, the latest transcript, usage statistics, and the current settings, with a “语音输入” switch to turn voice input on or off; its “打开设置” button reopens the settings window. Right-click opens the tray menu. Quit with “退出” in the panel or the tray menu. Prefer the terminal? Run `just-talk --tui`.
 4. Press the `push_to_talk` hotkey (default `Alt+Super`; `Option+Command` on macOS) to start/stop recording. Recognized text is copied to the clipboard and, when `auto_submit` is on, submitted into the focused field.
 
 ### Permissions

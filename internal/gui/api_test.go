@@ -140,6 +140,40 @@ func TestSaveLeavesUneditedEnginesOnLegacyConfig(t *testing.T) {
 	}
 }
 
+func TestSetEnabledKeepsOtherSettings(t *testing.T) {
+	isolate(t)
+	cur := config.Default()
+	cur.Voice.Enabled = true
+	cur.Voice.PushToTalk = "F9"
+	cur.Voice.EngineConfigs = map[string]map[string]string{"openai": {"api_key": "sk-keep"}}
+	var applied []bool
+	h := Handler(Options{Config: cur, Apply: func(c *config.Config) error { applied = append(applied, c.Voice.Enabled); return nil }})
+	post := func(body string) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/enabled", bytes.NewReader([]byte(body))))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", body, rec.Code, rec.Body)
+		}
+	}
+
+	post(`{"enabled":false}`)
+	saved, err := config.Load("config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Voice.Enabled || saved.Voice.PushToTalk != "F9" || saved.Voice.EngineConfigs["openai"]["api_key"] != "sk-keep" {
+		t.Fatalf("saved enabled=%v hotkey=%q key=%q", saved.Voice.Enabled, saved.Voice.PushToTalk, saved.Voice.EngineConfigs["openai"]["api_key"])
+	}
+	post(`{"enabled":true}`)
+	if !slices.Equal(applied, []bool{false, true}) {
+		t.Fatalf("applied %v", applied)
+	}
+	if !cur.Voice.Enabled {
+		t.Fatal("toggling modified the config the page started from")
+	}
+}
+
 func TestOpenOnlyCatalogLinks(t *testing.T) {
 	var opened []string
 	h := Handler(Options{Config: config.Default(), OpenURL: func(u string) { opened = append(opened, u) }})

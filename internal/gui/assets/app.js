@@ -644,4 +644,23 @@ async function boot() {
   poll();
 }
 
+// The tray panel can switch voice input while this page is open. Take the
+// saved settings again on focus; with unsaved edits only the switch
+// follows, and only if it was not edited here.
+window.addEventListener("focus", async () => {
+  if (!saved || saving || sheet) return;
+  let fresh;
+  try { fresh = await api("/api/state"); } catch { return; }
+  if (!isDirty()) {
+    applyState(fresh);
+    return;
+  }
+  if (draft.enabled === saved.settings.enabled) {
+    draft.enabled = fresh.settings.enabled;
+    form.elements.enabled.checked = draft.enabled;
+  }
+  saved.settings.enabled = fresh.settings.enabled;
+  updateDirty();
+});
+
 boot();

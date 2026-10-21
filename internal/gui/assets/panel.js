@@ -1,8 +1,9 @@
 "use strict";
 
-// The tray panel: live status, the latest transcript, usage statistics and
-// a read-only summary of the saved settings. Editing happens in the
-// settings window, which 打开设置 brings forward.
+// The tray panel: live status, the latest transcript, usage statistics, a
+// switch for voice input and a read-only summary of the other saved
+// settings. Editing happens in the settings window, which 打开设置 brings
+// forward.
 
 const MODE_LABELS = { toggle: "切换", hold: "按住" };
 
@@ -15,7 +16,9 @@ function summaryRow(label, ...value) {
 function renderSummary() {
   const s = state.settings;
   const rows = [];
-  if (!s.enabled) rows.push(summaryRow("语音输入", el("span", { class: "badge warn" }, "已关闭")));
+  const toggle = el("input", { type: "checkbox", class: "switch", "aria-label": "语音输入", onchange: () => setEnabled(toggle) });
+  toggle.checked = s.enabled;
+  rows.push(el("label", { class: "row" }, el("span", { class: "label" }, "语音输入"), el("span", { class: "value" }, toggle)));
   const hotkeys = splitHotkeys(s.pushToTalk);
   rows.push(summaryRow("热键", ...(hotkeys.length
     ? hotkeys.flatMap((h, i) => [i ? el("span", { class: "muted" }, "或") : null, keycaps(h.split("+"), state.platform)])
@@ -28,6 +31,16 @@ function renderSummary() {
   rows.push(summaryRow("语言", lang ? lang.label : s.language));
   rows.push(summaryRow("识别后", s.autoSubmit ? "自动上屏" : "复制到剪贴板"));
   $("summary").replaceChildren(...rows);
+}
+
+async function setEnabled(toggle) {
+  toggle.disabled = true;
+  try {
+    state = (await api("/api/enabled", { enabled: toggle.checked })).state;
+  } catch {
+    toggle.checked = !toggle.checked;
+  }
+  renderSummary();
 }
 
 let lastKey = null;

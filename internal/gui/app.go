@@ -122,7 +122,7 @@ func RunApp(o AppOptions) error {
 		Name:          "panel",
 		Title:         "Just Talk",
 		Width:         340,
-		Height:        550,
+		Height:        596,
 		URL:           "/panel.html",
 		Frameless:     true,
 		Hidden:        true,

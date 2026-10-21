@@ -4,6 +4,8 @@ All notable project changes are tracked here.
 
 ## Unreleased
 
+- The tray panel has a “语音输入” switch to turn voice input on or off without opening the settings window. It changes only `voice.enabled`, and an open settings window picks it up when focused without discarding its unsaved edits.
+
 ## v0.4.0 - 2026-10-17
 
 - Just Talk is now a menu bar/tray app with a desktop settings window, the default when `just-talk` runs without flags. Saved changes apply immediately without a restart. Closing the window keeps Just Talk running, and a second launch brings the running window forward instead of starting another instance.

@@ -74,6 +74,7 @@ func Handler(opts Options) http.Handler {
 	mux.HandleFunc("GET /api/state", s.state)
 	mux.HandleFunc("GET /api/status", s.status)
 	mux.HandleFunc("POST /api/settings", s.save)
+	mux.HandleFunc("POST /api/enabled", s.setEnabled)
 	mux.HandleFunc("POST /api/hotkey/check", s.checkHotkey)
 	mux.HandleFunc("POST /api/hotkey/capture", s.capture)
 	mux.HandleFunc("POST /api/open", s.open)
@@ -267,6 +268,29 @@ func (s *server) save(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.commitLocked(w, next)
+}
+
+// setEnabled turns voice input on or off ({"enabled": bool}) without
+// touching any other setting, for the tray panel's switch.
+func (s *server) setEnabled(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := *s.cfg
+	next.Voice.Enabled = in.Enabled
+	s.commitLocked(w, &next)
+}
+
+// commitLocked saves next, hands it to the engine and replies with the new
+// state.
+func (s *server) commitLocked(w http.ResponseWriter, next *config.Config) {
 	if err := config.Save(next); err != nil {
 		writeError(w, http.StatusInternalServerError, "保存失败: "+err.Error())
 		return
