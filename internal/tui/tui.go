@@ -109,6 +109,7 @@ func New(cfg *config.Config, cfgPath string) *Model {
 		{label: "结果订阅", key: "stream_addr", help: "在本机开 WebSocket 供别的程序订阅识别结果，如 127.0.0.1:7590；可多个订阅者，只允许回环地址，留空关闭", fType: fString, input: ti(vc.StreamAddr)},
 		{label: "持续转写", key: "continuous_enabled", help: "与听写并行的另一路：转会议等外部音源，由说话声切句，不输出文本，只给日志、浮层和结果订阅", fType: fToggle, boolVal: vc.Continuous.Enabled},
 		{label: "持续转写设备", key: "continuous_device", help: "外部音源的录音设备，通常是回环设备；和上面听写用的麦克风无关", fType: fSelect, opts: contLabels, optVals: contValues, optIdx: contIdx},
+		{label: "持续转写热键", key: "continuous_hotkey", help: "按一下开、再按一下关；只改当前状态，不写配置。留空 = 不注册，不能与听写热键重复", fType: fString, input: ti(vc.Continuous.Hotkey)},
 		{label: "提示位置", key: "overlay_position", help: "notch 为 macOS 刘海，其他平台按 top-center 处理；保存后立即生效", fType: fSelect, opts: positions, optIdx: idxOf(positions, cfg.Overlay.Position)},
 	}
 	return &Model{cfg: cfg, cfgPath: cfgPath, fields: fs, logs: make([]string, 0, 100), cursor: -1, showLogs: true}
@@ -294,6 +295,8 @@ func (m *Model) save() {
 			vc.Continuous.Enabled = f.boolVal
 		case "continuous_device":
 			vc.Continuous.Device = f.selected()
+		case "continuous_hotkey":
+			vc.Continuous.Hotkey = strings.TrimSpace(f.input.Value())
 		case "overlay_position":
 			next.Overlay.Position = f.selected()
 		}
@@ -301,6 +304,10 @@ func (m *Model) save() {
 	if err := settings.ValidateHotkeys(vc.PushToTalk); err != nil {
 		m.logf("❌ %s", err)
 		m.restorePushToTalkField()
+		return
+	}
+	if err := settings.ValidateHotkeys(vc.Continuous.Hotkey); err != nil {
+		m.logf("❌ 持续转写热键：%s", err)
 		return
 	}
 	if err := voice.CheckStreamAddr(vc.StreamAddr); err != nil {

@@ -48,7 +48,7 @@ func (p *VoicePlugin) syncContinuous() {
 	p.mu.Lock()
 	ctx := p.runCtx
 	vc := p.cfg.Voice
-	want := ctx != nil && vc.Enabled && vc.Continuous.Enabled
+	want := ctx != nil && vc.Enabled && p.contEnabled
 	if want && p.contCancel != nil && reflect.DeepEqual(p.contCfg, continuousKey(vc)) {
 		p.mu.Unlock()
 		return
@@ -400,6 +400,9 @@ func (p *VoicePlugin) dictationBusy() bool {
 func continuousKey(vc config.VoiceConfig) config.VoiceConfig {
 	vc.Mode, vc.PushToTalk, vc.TextOutput, vc.Device = "", "", "", ""
 	vc.StopDelayMs = 0
+	// Switching the service on or off is handled by want; rebinding its
+	// hotkey must not interrupt a transcription either.
+	vc.Continuous.Enabled, vc.Continuous.Hotkey = false, ""
 	return vc
 }
 

@@ -106,6 +106,7 @@ type settingsJSON struct {
 	// Continuous* is the transcription service that runs alongside dictation.
 	ContinuousEnabled bool   `json:"continuousEnabled"`
 	ContinuousDevice  string `json:"continuousDevice"`
+	ContinuousHotkey  string `json:"continuousHotkey"`
 	OverlayPosition   string `json:"overlayPosition"`
 	Engine            string `json:"engine"`
 	// EngineConfigs carries only the engines whose fields the page edited.
@@ -177,6 +178,7 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 			StreamAddr:        vc.StreamAddr,
 			ContinuousEnabled: vc.Continuous.Enabled,
 			ContinuousDevice:  vc.Continuous.Device,
+			ContinuousHotkey:  canonicalHotkeys(vc.Continuous.Hotkey),
 			OverlayPosition:   cfg.Overlay.Position,
 			Engine:            settings.CurrentEngine(vc),
 		},
@@ -342,6 +344,10 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	if err := settings.ValidateHotkeys(pushToTalk); err != nil {
 		return nil, err
 	}
+	continuousHotkey := strings.TrimSpace(in.ContinuousHotkey)
+	if err := settings.ValidateHotkeys(continuousHotkey); err != nil {
+		return nil, err
+	}
 	if !config.ValidMode(in.Mode) {
 		return nil, fmt.Errorf("未知模式: %s", in.Mode)
 	}
@@ -381,6 +387,7 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	vc.StreamAddr = strings.TrimSpace(in.StreamAddr)
 	vc.Continuous.Enabled = in.ContinuousEnabled
 	vc.Continuous.Device = strings.TrimSpace(in.ContinuousDevice)
+	vc.Continuous.Hotkey = continuousHotkey
 	vc.StopDelayMs = in.StopDelayMs
 	vc.Engine = engine
 	next.Overlay.Position = in.OverlayPosition

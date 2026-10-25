@@ -85,6 +85,14 @@
               <select name="continuousDevice" id="continuousDevice" aria-label="外部音源设备"></select>
             </div>
           </div>
+          <div class="row hotkey-row">
+            <span class="label">开关热键<small>按一下开、再按一下关，只改当前状态，不写配置；不设就只看上面的开关。这里划的是整条服务的开关，所以只有切换，没有按住</small></span>
+            <div class="hotkeys">
+              <div id="continuousSlots" class="slots"></div>
+              <input type="text" name="continuousHotkey" id="continuousHotkey" spellcheck="false" hidden
+                aria-label="持续转写开关热键">
+            </div>
+          </div>
         </div>
 
         <h2 class="group-title">识别</h2>

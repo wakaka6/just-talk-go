@@ -67,7 +67,7 @@ function applyState(state) {
   $("configPath").title = state.configPath;
   form.elements.enabled.checked = draft.enabled;
   form.elements.continuousEnabled.checked = draft.continuousEnabled;
-  for (const name of ["pushToTalk", "stopDelayMs", "hotwordsFile", "streamAddr"]) form.elements[name].value = draft[name];
+  for (const name of ["pushToTalk", "continuousHotkey", "stopDelayMs", "hotwordsFile", "streamAddr"]) form.elements[name].value = draft[name];
   $("textOutput").replaceChildren(...state.textOutputs.map((o) => el("option", { value: o }, OUTPUT_LABELS[o] || o)));
   $("textOutput").value = draft.textOutput;
   $("language").replaceChildren(...state.languages.map((l) =>
@@ -87,12 +87,16 @@ function applyState(state) {
 
 // ---- hotkey slots ----
 //
-// push_to_talk is a comma-separated list; the first two entries are the
-// primary and secondary slots, any further ones (hand-edited config) are
-// kept as they are. A slot is recorded from key events in this page while
-// the server keeps the global hotkeys suspended.
+// Two independent groups: the dictation hotkeys and the one that switches
+// the transcription service. Each is a comma-separated list whose first
+// entries are the slots shown here; any further ones (hand-edited config)
+// are kept as they are. A slot is recorded from key events in this page
+// while the server keeps the global hotkeys suspended.
 
-const SLOT_NAMES = ["主热键", "第二热键"];
+const HOTKEY_GROUPS = {
+  pushToTalk: { container: "slots", names: ["主热键", "第二热键"], extra: "hotkeyExtra" },
+  continuousHotkey: { container: "continuousSlots", names: ["开关热键"], extra: null },
+};
 const MOD_ORDER = ["Ctrl", "Alt", "Shift", "Super", "Fn"];
 const MOD_CODES = {
   ControlLeft: "Ctrl", ControlRight: "Ctrl", AltLeft: "Alt", AltRight: "Alt",
@@ -109,7 +113,7 @@ const KEY_CODES = {
   Quote: "'", Comma: ",", Period: ".", Slash: "/",
 };
 
-let rec = null; // { slot, mods: Set, ready, keepalive }
+let rec = null; // { group, slot, mods: Set, ready, keepalive }
 
 function keyName(code) {
   if (KEY_CODES[code]) return KEY_CODES[code];
@@ -125,10 +129,14 @@ function modName(ev) {
 }
 
 function renderSlots() {
-  const list = splitHotkeys(draft.pushToTalk);
-  $("slots").replaceChildren(...SLOT_NAMES.map((name, i) => {
+  for (const [key, group] of Object.entries(HOTKEY_GROUPS)) renderGroup(key, group);
+}
+
+function renderGroup(key, group) {
+  const list = splitHotkeys(draft[key]);
+  $(group.container).replaceChildren(...group.names.map((name, i) => {
     const value = list[i] || "";
-    const recording = rec?.slot === i;
+    const recording = rec?.group === key && rec?.slot === i;
     let body;
     if (recording) {
       const held = MOD_ORDER.filter((m) => rec.mods.has(m));
@@ -142,29 +150,34 @@ function renderSlots() {
         type: "button",
         class: recording ? "recorder recording" : "recorder",
         "aria-label": `${name}：${value || "未设置"}，${recording ? "正在录制" : "点击录制"}`,
-        onclick: () => (recording ? endRecording() : startRecording(i)),
+        onclick: () => (recording ? endRecording() : startRecording(key, i)),
       },
         recording ? el("span", { class: "rec-dot" }) : null,
         body,
         recording ? el("span", { class: "rec-hint" }, "Esc 取消") : null),
-      i > 0 && value && !recording
-        ? el("button", { type: "button", class: "clear", title: `清除${name}`, "aria-label": `清除${name}`, onclick: () => setSlot(i, "") }, "×")
+      // No hotkey at all is a valid setup, so every slot can be cleared.
+      value && !recording
+        ? el("button", { type: "button", class: "clear", title: `清除${name}`, "aria-label": `清除${name}`, onclick: () => setSlot(key, i, "") }, "×")
         : el("span")); // keeps the grid column
   }));
-  const extra = list.slice(SLOT_NAMES.length);
-  $("hotkeyExtra").hidden = extra.length === 0;
-  $("hotkeyExtra").textContent = `配置中还有 ${extra.join("、")}，保存时一并保留；可用“手动编辑”修改。`;
+  if (!group.extra) return;
+  const extra = list.slice(group.names.length);
+  $(group.extra).hidden = extra.length === 0;
+  $(group.extra).textContent = `配置中还有 ${extra.join("、")}，保存时一并保留；可用“手动编辑”修改。`;
 }
 
-function setSlot(i, value) {
-  const list = splitHotkeys(draft.pushToTalk);
-  if (value && list.some((v, j) => j !== i && v === value)) {
-    showHotkeyError(`${value} 已在另一个插槽中使用`);
+function setSlot(key, i, value) {
+  const list = splitHotkeys(draft[key]);
+  // A combo can only mean one thing, in either group.
+  const taken = Object.keys(HOTKEY_GROUPS).flatMap((k) =>
+    splitHotkeys(draft[k]).filter((v, j) => !(k === key && j === i)));
+  if (value && taken.includes(value)) {
+    showHotkeyError(`${value} 已经被占用`);
     return;
   }
   list[i] = value;
-  draft.pushToTalk = list.filter(Boolean).join(", ");
-  form.elements.pushToTalk.value = draft.pushToTalk;
+  draft[key] = list.filter(Boolean).join(", ");
+  form.elements[key].value = draft[key];
   showHotkeyError("");
   renderSlots();
   updateDirty();
@@ -175,10 +188,10 @@ function showHotkeyError(text) {
   $("hotkeyError").hidden = !text;
 }
 
-async function startRecording(slot) {
+async function startRecording(group, slot) {
   endRecording();
   showHotkeyError("");
-  const r = { slot, mods: new Set(), ready: false, keepalive: 0 };
+  const r = { group, slot, mods: new Set(), ready: false, keepalive: 0 };
   rec = r;
   renderSlots();
   try {
@@ -205,11 +218,11 @@ function endRecording() {
 // A non-modifier key completes the combo at once; a modifier-only combo
 // completes when its first modifier is released, with every modifier held.
 async function finishRecording(key) {
-  const slot = rec.slot;
+  const { group, slot } = rec;
   const value = [...MOD_ORDER.filter((m) => rec.mods.has(m)), ...(key ? [key] : [])].join("+");
   endRecording();
   try {
-    setSlot(slot, (await api("/api/hotkey/check", { value })).value);
+    setSlot(group, slot, (await api("/api/hotkey/check", { value })).value);
   } catch (err) {
     showHotkeyError(err.message);
   }
@@ -527,6 +540,7 @@ function readForm() {
   draft.device = form.elements.device.value;
   draft.continuousEnabled = form.elements.continuousEnabled.checked;
   draft.continuousDevice = form.elements.continuousDevice.value;
+  draft.continuousHotkey = form.elements.continuousHotkey.value;
   draft.textOutput = form.elements.textOutput.value;
   draft.hotwordsFile = form.elements.hotwordsFile.value.trim();
   draft.streamAddr = form.elements.streamAddr.value.trim();

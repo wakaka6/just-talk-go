@@ -226,6 +226,7 @@ hotwords = ["Wayland", "Sway", "wl-copy", "wtype", "just-talk-go"]
 
 [voice.continuous]                 # the transcription service, alongside dictation (see below)
 enabled = false
+hotkey = ""                        # press once to start, again to stop (empty = none)
 device = ""                        # the external source's device (usually a loopback one)
 silence_gate = true                # cut on speech, upload no silence
 
@@ -283,6 +284,8 @@ The two run **in parallel**, not one instead of the other: listening to an exter
 **Continuous transcription**: `[voice.continuous] enabled = true` is for transcribing a meeting or other system audio. It runs **alongside** dictation rather than instead of it: while you hold a hotkey and talk into your microphone, it keeps handing the external source to subscribers in the background. Each path has its own recording device (`[voice] device` is the microphone, `[voice.continuous] device` is usually a loopback one) and its own sessions.
 
 This path has no finger on a key: in dictation a person decides where a sentence starts and ends, and here the **silence gate** (`silence_gate`, on by default) does that job. Speech opens an ASR session; about 1.2 seconds of silence closes it (the final packet is flagged `last`, which asks the engine for its final result). So nothing is sent to the cloud while no one is talking and no session sits idle; the 0.6 seconds of audio captured before the gate opened are sent along, so a sentence never loses its first syllable.
+
+**It has a hotkey too**: bind one in `[voice.continuous] hotkey` and press it to start the service, press it again to stop — the same way you switch dictation on and off. The difference is what the key bounds: a whole service rather than a sentence, so it only toggles and there is no hold — nobody holds a key down for an entire meeting, and sentence boundaries are the silence gate's job anyway. The key changes the **running state** only; it never writes the config file. Editing `enabled` in the settings afterwards overrides what the key chose (an explicit instruction wins), while a reload that leaves the setting alone leaves the key's choice alone. It cannot be the same combo as a dictation hotkey; saving that is rejected.
 
 An old `mode = "continuous"` migrates on load: `[voice.continuous] enabled = true`, the `device` moves to that path, and **the hotkey is cleared** — that config registered no hotkey, so inventing a dictation that types into the focused window would be the surprise. No hotkey means no dictation, which is how a transcription-only instance is configured.
 

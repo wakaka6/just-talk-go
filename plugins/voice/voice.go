@@ -336,6 +336,12 @@ type VoicePlugin struct {
 	// It shares one status line with dictation, which outranks it.
 	contState  string
 	contDetail string
+	contCombos []hotkey.Combo
+	// contEnabled is the live on/off that the hotkey flips; contConfigured is
+	// the last value the config asked for, so editing the setting still wins
+	// over an earlier toggle.
+	contEnabled    bool
+	contConfigured bool
 }
 
 type recordingSession struct {
@@ -407,11 +413,13 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	if !vc.Enabled {
 		p.mu.Lock()
 		oldCombos := p.combos
+		oldCont := p.contCombos
 		p.cleanupTransientHotkeysLocked()
 		p.combos = nil
+		p.contCombos = nil
 		clear(p.heldCombos)
 		p.mu.Unlock()
-		for _, c := range oldCombos {
+		for _, c := range append(oldCombos, oldCont...) {
 			p.env.UnregisterHotkey(c)
 		}
 		p.logger.Info("voice disabled")
@@ -431,6 +439,18 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 			return err
 		}
 	}
+	contCombos, err := config.ParseHotkeyList(vc.Continuous.Hotkey)
+	if err != nil {
+		return fmt.Errorf("parse hotkey %q: %w", vc.Continuous.Hotkey, err)
+	}
+	for _, c := range contCombos {
+		if err := validateVoiceHotkey(c); err != nil {
+			return err
+		}
+		if slices.Contains(combos, c) {
+			return fmt.Errorf("%s 已经是听写热键，不能再用来开关持续转写", c)
+		}
+	}
 
 	p.mu.Lock()
 	oldCombos := p.combos
@@ -439,6 +459,13 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	p.mode = mode
 	p.textOutput = vc.TextOutput
 	p.stopDelayMs = vc.StopDelayMs
+	oldCont := p.contCombos
+	p.contCombos = contCombos
+	// An edited setting wins over an earlier toggle; a reload that leaves it
+	// alone leaves the hotkey's choice alone.
+	if vc.Continuous.Enabled != p.contConfigured {
+		p.contEnabled, p.contConfigured = vc.Continuous.Enabled, vc.Continuous.Enabled
+	}
 	for c := range p.heldCombos {
 		if modeChanged || !slices.Contains(combos, c) {
 			delete(p.heldCombos, c)
@@ -479,6 +506,21 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 		registered = append(registered, c)
 		p.logger.Info("hotkey_registered", "combo", c, "suppress", opts.Suppress)
 	}
+	for _, c := range oldCont {
+		if !slices.Contains(contCombos, c) {
+			p.env.UnregisterHotkey(c)
+		}
+	}
+	for _, c := range contCombos {
+		if slices.Contains(oldCont, c) {
+			continue
+		}
+		// A tap, never held: no reason to swallow the key from other apps.
+		if err := p.env.RegisterHotkeyWithOptions(c, hotkey.RegisterOptions{}, p.onContinuousHotkey); err != nil {
+			return fmt.Errorf("register hotkey %s: %w", c, err)
+		}
+		p.logger.Info("hotkey_registered", "combo", c, "purpose", "continuous")
+	}
 	p.syncContinuous()
 	return nil
 }
@@ -504,6 +546,27 @@ func (p *VoicePlugin) onCancelHotkey(evt hotkey.Event) {
 		return
 	}
 	p.cancelRecording()
+}
+
+// onContinuousHotkey turns the transcription service on and off. This hotkey
+// bounds the service, not a sentence, so it only toggles: nobody holds a key
+// down for a whole meeting. It changes the running state, not the config.
+func (p *VoicePlugin) onContinuousHotkey(evt hotkey.Event) {
+	if evt.Type != hotkey.KeyDown {
+		return
+	}
+	markTUIHandled(evt)
+	p.mu.Lock()
+	p.contEnabled = !p.contEnabled
+	on := p.contEnabled
+	p.mu.Unlock()
+	p.logger.Info("continuous toggled by hotkey", "enabled", on)
+	if on {
+		pout("\U0001f3a7 持续转写：开")
+	} else {
+		pout("\U0001f3a7 持续转写：关")
+	}
+	p.syncContinuous()
 }
 
 func (p *VoicePlugin) onRetryHotkey(evt hotkey.Event) {

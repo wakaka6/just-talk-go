@@ -67,6 +67,10 @@ type VoiceConfig struct {
 // 同时，它把会议等外部音源转给订阅者，互不影响——所以它有自己的录音设备。
 type ContinuousConfig struct {
 	Enabled bool `toml:"enabled"`
+	// Hotkey 开关这一路的热键，留空 = 不注册。听写的热键划的是一句话的
+	// 边界，这个划的是整条服务的开关，所以只有「按一下切换」——没人会按着
+	// 一个键开完一场会。按键只改当前运行状态，不写配置文件。
+	Hotkey string `toml:"hotkey"`
 	// Device 外部音源的录音设备（通常是回环设备），与听写用的麦克风无关。
 	Device string `toml:"device"`
 	// SilenceGate 按说话声切句，静音时既不送音频也不留着会话。
