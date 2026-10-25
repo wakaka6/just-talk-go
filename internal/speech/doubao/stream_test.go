@@ -68,6 +68,51 @@ func TestParseResponseTracksLastText(t *testing.T) {
 	}
 }
 
+func TestParseResponsePublishesUtterances(t *testing.T) {
+	client := newTestSession()
+	client.parseResponse(testASRFrame(t, 0x01, map[string]any{
+		"text": "今天天气怎么样？我们用",
+		"utterances": []map[string]any{
+			{"text": "今天天气怎么样？", "definite": true, "start_time": 0},
+			{"text": "我们用", "definite": false},
+		},
+	}))
+
+	result := <-client.Results()
+	want := []speech.Utterance{
+		{Text: "今天天气怎么样？", Definite: true},
+		{Text: "我们用", Definite: false},
+	}
+	if len(result.Utterances) != len(want) {
+		t.Fatalf("utterances = %+v", result.Utterances)
+	}
+	for i := range want {
+		if result.Utterances[i] != want[i] {
+			t.Fatalf("utterance %d = %+v, want %+v", i, result.Utterances[i], want[i])
+		}
+	}
+	if result.Last {
+		t.Fatal("non-last packet marked Last")
+	}
+	if !result.IsFinal {
+		t.Fatal("frame with a definite utterance not marked IsFinal")
+	}
+}
+
+func TestParseResponsePublishesEmptyLastPacket(t *testing.T) {
+	client := newTestSession()
+	client.parseResponse(testASRFrame(t, 0x03, map[string]any{"text": ""}))
+
+	select {
+	case result := <-client.Results():
+		if !result.Last || result.Text != "" || len(result.Utterances) != 0 {
+			t.Fatalf("result = %+v", result)
+		}
+	default:
+		t.Fatal("empty last packet was not published")
+	}
+}
+
 func TestLogIDFromResponse(t *testing.T) {
 	resp := &http.Response{Header: http.Header{"X-Tt-Logid": []string{"trace-123"}}}
 	if got := logIDFromResponse(resp); got != "trace-123" {
@@ -199,14 +244,17 @@ func TestBuildBigmodelRequest(t *testing.T) {
 
 func testASRResponse(t *testing.T, flags byte, text string, definite bool) []byte {
 	t.Helper()
-	payload, err := json.Marshal(map[string]any{
-		"result": map[string]any{
-			"text": text,
-			"utterances": []map[string]any{
-				{"text": text, "definite": definite},
-			},
+	return testASRFrame(t, flags, map[string]any{
+		"text": text,
+		"utterances": []map[string]any{
+			{"text": text, "definite": definite},
 		},
 	})
+}
+
+func testASRFrame(t *testing.T, flags byte, result map[string]any) []byte {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{"result": result})
 	if err != nil {
 		t.Fatalf("marshal response: %v", err)
 	}

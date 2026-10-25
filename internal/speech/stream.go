@@ -11,7 +11,17 @@ import "context"
 type StreamResult struct {
 	Text    string
 	IsFinal bool
-	Error   error
+	// Utterances 本帧服务端返回的分句（按序，带 definite 标记）；引擎不提供时为空。
+	Utterances []Utterance
+	// Last 仅在服务端最后一包（会话结束）时为 true。
+	Last  bool
+	Error error
+}
+
+// Utterance 服务端切分的一句识别结果；Definite 表示该句已确定不再改写。
+type Utterance struct {
+	Text     string `json:"text"`
+	Definite bool   `json:"definite"`
 }
 
 // StreamParams 开启流式识别会话的参数。

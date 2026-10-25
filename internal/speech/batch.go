@@ -141,7 +141,7 @@ func (s *BatchSession) finish(ctx context.Context, audio []byte) {
 		s.textMu.Unlock()
 	}
 	select {
-	case s.resultCh <- StreamResult{Text: text, IsFinal: true}:
+	case s.resultCh <- StreamResult{Text: text, IsFinal: true, Last: true}:
 	case <-ctx.Done():
 	}
 	s.finalOnce.Do(func() { close(s.final) })

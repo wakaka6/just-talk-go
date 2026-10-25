@@ -266,11 +266,8 @@ func (s *StreamSession) parseResponse(data []byte) bool {
 func (s *StreamSession) handleFullServerFrame(sf *ServerFrame) {
 	var resp struct {
 		Result struct {
-			Text       string `json:"text"`
-			Utterances []struct {
-				Text     string `json:"text"`
-				Definite bool   `json:"definite"`
-			} `json:"utterances"`
+			Text       string             `json:"text"`
+			Utterances []speech.Utterance `json:"utterances"`
 		} `json:"result"`
 	}
 	if json.Unmarshal(sf.Payload, &resp) != nil {
@@ -288,8 +285,17 @@ func (s *StreamSession) handleFullServerFrame(sf *ServerFrame) {
 		s.textMu.Lock()
 		s.lastText = text
 		s.textMu.Unlock()
+	}
+	// 空文本的最后一包也要发布，让调用方知道会话已结束。
+	if text != "" || isLastPacket {
+		result := speech.StreamResult{
+			Text:       text,
+			IsFinal:    isFinalResult,
+			Utterances: resp.Result.Utterances,
+			Last:       isLastPacket,
+		}
 		select {
-		case s.resultCh <- speech.StreamResult{Text: text, IsFinal: isFinalResult}:
+		case s.resultCh <- result:
 		default:
 		}
 	}
