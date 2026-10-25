@@ -140,7 +140,12 @@ func main() {
 	}
 	eng.LoadPlugin(voice.NewVoicePlugin())
 	eng.LoadPlugin(overlay.NewOverlayPlugin())
-	if p := config.FindConfig(); p != "" {
+	// -config 指定的文件优先；否则热加载会把另一份配置的改动套到本实例上。
+	p := *cfgPath
+	if p == "" {
+		p = config.FindConfig()
+	}
+	if p != "" {
 		eng.WatchConfig(p)
 	}
 
