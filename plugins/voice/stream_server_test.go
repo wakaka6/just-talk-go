@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -178,6 +179,7 @@ func TestSubscriberIsToldTheServiceStateFirst(t *testing.T) {
 
 // A Unix socket names the instance by path and lets only its owner listen.
 func TestStreamServerOnUnixSocket(t *testing.T) {
+	skipUnixOnWindows(t)
 	path := filepath.Join(t.TempDir(), "asr.sock")
 	srv, err := newStreamServer("unix:"+path, discardLogger())
 	if err != nil {
@@ -233,6 +235,7 @@ func TestStreamServerKeepsAFileThatIsNotASocket(t *testing.T) {
 
 // A socket left behind by a crash nobody listens on is cleared, not an error.
 func TestStreamServerReplacesAStaleSocket(t *testing.T) {
+	skipUnixOnWindows(t)
 	path := filepath.Join(shortTempDir(t), "asr.sock")
 	ln, err := net.Listen("unix", path)
 	if err != nil {
@@ -258,13 +261,31 @@ func shortTempDir(t *testing.T) string {
 	return dir
 }
 
+// skipUnixOnWindows skips tests that need a working unix: address, which
+// Windows refuses (see streamListen).
+func skipUnixOnWindows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix: addresses are not supported on Windows")
+	}
+}
+
 func TestCheckStreamAcceptsBothKinds(t *testing.T) {
-	for _, addr := range []string{"127.0.0.1:7590", "localhost:0", "unix:/tmp/jt.sock", "unix:~/jt.sock"} {
+	accepted := []string{"127.0.0.1:7590", "localhost:0"}
+	rejected := []string{"0.0.0.0:7590", "192.168.1.5:7590", "unix:", "7590"}
+	unix := []string{"unix:/tmp/jt.sock", "unix:~/jt.sock"}
+	// Windows ignores 0600 on a socket, so unix: would promise owner-only
+	// access it cannot give.
+	if runtime.GOOS == "windows" {
+		rejected = append(rejected, unix...)
+	} else {
+		accepted = append(accepted, unix...)
+	}
+	for _, addr := range accepted {
 		if err := CheckStream(true, addr); err != nil {
 			t.Fatalf("CheckStream(%q) = %v, want accepted", addr, err)
 		}
 	}
-	for _, addr := range []string{"0.0.0.0:7590", "192.168.1.5:7590", "unix:", "7590"} {
+	for _, addr := range rejected {
 		// Off does not excuse a bad address: switching on later must not fail.
 		if err := CheckStream(false, addr); err == nil {
 			t.Fatalf("CheckStream(%q) was accepted", addr)

@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -91,8 +92,13 @@ func newASREvent(session, text string, utterances []speech.Utterance, final bool
 // "unix:<path>" listens on a Unix socket, which names the instance by path
 // and limits who may subscribe to the owner; anything else is host:port on
 // loopback, which any local program (and a browser page) can reach.
+// Windows gets no unix: addresses: a socket there ignores 0600, so the
+// owner-only promise would be false.
 func streamListen(addr string) (network, target string, err error) {
 	if path, ok := strings.CutPrefix(addr, "unix:"); ok {
+		if runtime.GOOS == "windows" {
+			return "", "", fmt.Errorf("stream_addr %q：Windows 不支持 unix: 地址，请用 127.0.0.1:<端口>", addr)
+		}
 		path = config.ExpandPath(strings.TrimSpace(path))
 		if path == "" {
 			return "", "", fmt.Errorf("stream_addr %q 缺少 socket 路径", addr)
