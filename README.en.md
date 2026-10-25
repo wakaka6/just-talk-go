@@ -214,7 +214,7 @@ enabled = true
 mode = "toggle"                    # toggle | hold | continuous (see below)
 push_to_talk = "Alt+Super"
 language = "zh-CN"
-auto_submit = true                 # auto-submit recognized text
+text_output = "paste"              # where recognized text goes: paste | clipboard | none
 stop_delay_ms = 0                  # release delay in hold mode
 device = ""                        # recording device (empty = default; macOS matches device UID or name)
 stream_addr = ""                   # WebSocket address for recognition results, e.g. "127.0.0.1:7590" (empty = off)
@@ -264,6 +264,10 @@ A device named in the config but not connected right now stays in the list marke
 | macOS | ✅ Matched against the device UID, then the name (case-insensitive); an unknown device lists the available ones and refuses to record instead of falling back to the default microphone | ✅ From the CoreAudio transport type (virtual/aggregate with output streams = loopback) | ⚠️ The OS has no “system audio” input: it needs a driver such as BlackHole or Loopback, with the app you want to record playing into it. The UI says so when none is installed |
 | Linux | ✅ Passed to `arecord -D` verbatim; arecord fails on an unknown device | ⚠️ Only names containing `.monitor`; everything else counts as a microphone | ⚠️ A PulseAudio / PipeWire `.monitor` source is a loopback, but the list comes from the `hw:` / `plughw:` / `default` entries of `arecord -L`, which usually omits monitor sources: set `device` by hand (see `pactl list short sources`) |
 | Windows | ✅ By winmm device name (case-insensitive) or device index | ❌ winmm does not report it; every device counts as a microphone | ❌ Not supported: winmm only records capture devices, and WASAPI loopback is not implemented yet |
+
+**Where recognized text goes**: `text_output` is `paste` (into the focused field, and the clipboard), `clipboard` (clipboard only) or `none` (transcribe only; the text still reaches the log, the overlay and the subscription below). A legacy `auto_submit` migrates automatically — `true` → `paste`, `false` → `clipboard` — and the key disappears on the next save. Continuous mode never outputs text, so this setting applies to `toggle` and `hold`.
+
+**An external word list**: hotwords make recognition fit the words actually being said, but a list inside the config is frozen. `hotwords_file` points at a text file (one word per line, `#` starts a comment, `~` is expanded) whose words are merged with `hotwords`. **It is re-read at the start of every session**, so another program (or you) can rewrite the file and the next hotkey press — or the next reconnect in continuous mode — picks it up without touching the config or restarting. An unreadable file is a warning: recognition continues with `hotwords`.
 
 **Continuous transcription**: `mode = "continuous"` is for transcribing a meeting or other system audio. Recognition starts when Just Talk starts, and every session that ends for any reason (server end, error, network drop) reconnects automatically (backoff from 0.5s, capped at 5s). The recording device stays open across reconnects, and up to the last 5 seconds of audio captured during a reconnect are replayed into the new session. This mode registers no hotkeys and **never** types, pastes or touches the clipboard; results go only to the log, the overlay and the WebSocket subscription below. It needs a streaming engine (e.g. `doubao-stream`, `dashscope`). On macOS, pair it with a loopback device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole): set the meeting app's speaker output to BlackHole and record from it:
 

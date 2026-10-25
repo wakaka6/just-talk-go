@@ -130,7 +130,7 @@ make install
 1. 获取豆包大模型语音识别凭证（App Key / Access Key）。
 2. 运行 `just-talk --doctor` 检查麦克风、剪贴板工具和权限。
 3. 运行 `just-talk` 打开设置窗口，在“识别引擎”中选择渠道（默认豆包流式）并填入凭证，点击“保存”（或 `Cmd/Ctrl+S`）。关闭窗口不会退出。左键点击菜单栏/托盘图标会弹出小面板，显示当前状态、最近一次识别结果、使用统计和当前配置，可直接用“语音输入”开关启用或停用，面板里的“打开设置”可回到设置窗口；右键是托盘菜单。退出请用面板或托盘菜单中的“退出”。习惯终端可用 `just-talk --tui`。
-4. 按 `push_to_talk` 热键（默认 `Alt+Super`；macOS 为 `Option+Command`）开始/停止录音。识别结果会复制到剪贴板，并在开启 `auto_submit` 时上屏到当前输入框。
+4. 按 `push_to_talk` 热键（默认 `Alt+Super`；macOS 为 `Option+Command`）开始/停止录音。识别结果送到哪里由 `text_output` 决定，默认上屏到当前输入框。
 
 ### 权限
 
@@ -214,7 +214,7 @@ enabled = true
 mode = "toggle"                    # toggle | hold | continuous（持续转写，见下文）
 push_to_talk = "Alt+Super"
 language = "zh-CN"
-auto_submit = true                 # 识别完成后自动上屏
+text_output = "paste"              # 识别结果送到哪里：paste 上屏 / clipboard 仅剪贴板 / none 不输出
 stop_delay_ms = 0                  # hold 模式松开后的停止延迟
 device = ""                        # 录音设备（留空使用默认；macOS 按设备 UID 或名称匹配）
 stream_addr = ""                   # 识别结果 WebSocket 订阅地址，如 "127.0.0.1:7590"（留空关闭）
@@ -223,6 +223,7 @@ app_key = "your-app-key"
 access_key = "your-access-key"
 resource_id = "volc.bigasr.sauc.duration"
 hotwords = ["Wayland", "Sway", "wl-copy", "wtype", "just-talk-go"]
+hotwords_file = ""                 # 外部词表路径，与 hotwords 合并（留空关闭）
 
 # 引擎：doubao-stream（豆包流式，默认）/ dashscope（千问 Fun-ASR 流式）
 #       openai / auralwise / mimo-asr（整段转写，无实时字幕）
@@ -264,6 +265,10 @@ hotkeys = []                       # 调试插件额外注册的热键
 | macOS | ✅ 先按 UID 精确匹配，再按名称（不区分大小写）；找不到不会退回默认麦克风，而是列出可用设备并拒绝录音 | ✅ 按 CoreAudio 传输类型自动判断（虚拟 / 聚合且有输出流 = 回环） | ⚠️ 系统没有“录系统声音”这种输入，必须装 BlackHole / Loopback 等虚拟声卡，并把要录的应用的播放输出指向它；未检测到回环设备时界面会提示 |
 | Linux | ✅ 原样传给 `arecord -D`；设备名不对时由 arecord 报错 | ⚠️ 只能按名称含 `.monitor` 判断；其余一律当麦克风 | ⚠️ PulseAudio / PipeWire 的 `.monitor` 源就是回环，但列表取自 `arecord -L` 的 `hw:` / `plughw:` / `default` 条目，monitor 源通常不在其中，需要手填 `device`（如 `pactl list short sources` 里的 monitor 名） |
 | Windows | ✅ 按 winmm 设备名（不区分大小写）或设备编号 | ❌ winmm 不提供这个信息，全部当麦克风 | ❌ 暂不支持：winmm 只能录采集设备，录本机播放需要 WASAPI loopback，还没实现 |
+
+**识别结果送到哪里**：`text_output` 有三个值——`paste` 上屏到当前输入框（同时进剪贴板）、`clipboard` 只写剪贴板、`none` 不输出（只转写，结果进日志、浮层和下文的识别结果订阅）。旧配置里的 `auto_submit` 会自动迁移：`true` → `paste`，`false` → `clipboard`，下次存盘后该键消失。持续转写模式本来就不输出，这个设置只对 `toggle` / `hold` 生效。
+
+**外部词表**：热词让识别更贴当下的上下文，但写在配置里的是一份死名单。`hotwords_file` 指向一个文本文件（一行一个词，`#` 开头为注释，支持 `~`），内容与 `hotwords` 合并去重。**每次会话开始时重读**：别的程序（或你自己）改完文件，热键模式下一次按键、持续转写下一次重连就生效，不用改配置、不用重启。读不到文件只警告并沿用 `hotwords`，不会阻止识别。
 
 **持续转写**：`mode = "continuous"` 用于转写会议或系统音频。启动后自动开始识别，会话因任何原因结束（服务端结束、错误、断网）都会自动重连（0.5s 起退避，最长 5s）；录音设备在重连期间保持打开，重连间隙里最近约 5 秒的音频会补发给新会话。该模式不注册热键，也**从不**上屏、不写剪贴板；结果只进入日志、浮层和下文的 WebSocket 订阅。需要流式引擎（如 `doubao-stream`、`dashscope`）。macOS 上可配合 [BlackHole](https://github.com/ExistentialAudio/BlackHole) 等虚拟音频设备：把会议软件的扬声器输出设为 BlackHole，再让 Just Talk 从它录音：
 
