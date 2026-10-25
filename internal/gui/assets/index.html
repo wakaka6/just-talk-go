@@ -107,10 +107,14 @@
               <input type="text" id="hotwordInput" spellcheck="false" placeholder="添加热词，回车确认" aria-label="添加热词">
             </div>
           </div>
-          <label class="row">
-            <span class="label">热词文件<small>外部词表路径，一行一个词，# 开头为注释；与上面的热词合并，每次会话开始时重读，别的程序改完下一句就生效</small></span>
-            <input type="text" name="hotwordsFile" id="hotwordsFile" spellcheck="false" placeholder="~/Documents/hotwords.txt">
-          </label>
+          <div class="row">
+            <span class="label">热词文件<small>外部词表，一行一个词，# 开头为注释；与上面的热词合并，每次会话开始时重读，别的程序改完下一句就生效</small></span>
+            <div class="file-pick">
+              <input type="text" name="hotwordsFile" id="hotwordsFile" spellcheck="false" placeholder="~/Documents/hotwords.txt" aria-label="热词文件">
+              <button type="button" id="hotwordsFileClear" class="link" hidden>清除</button>
+              <button type="button" id="hotwordsFilePick" class="ghost" hidden>选择…</button>
+            </div>
+          </div>
         </div>
 
         <h2 class="group-title">输出</h2>

@@ -46,6 +46,10 @@ type Options struct {
 	// OpenURL opens a documentation link in the system browser. Nil in
 	// browser mode, where the page opens links itself.
 	OpenURL func(string)
+	// PickFile shows the native open-file dialog starting next to current and
+	// returns the chosen path, "" when cancelled. Nil in browser mode, where
+	// the page cannot learn a picked file's path and the path is typed.
+	PickFile func(current string) (string, error)
 	// ShowSettings brings the settings window forward and Quit ends the
 	// app; both are called from the tray panel. Nil in browser mode.
 	ShowSettings func()
@@ -82,6 +86,7 @@ func Handler(opts Options) http.Handler {
 	mux.HandleFunc("POST /api/hotkey/check", s.checkHotkey)
 	mux.HandleFunc("POST /api/hotkey/capture", s.capture)
 	mux.HandleFunc("POST /api/open", s.open)
+	mux.HandleFunc("POST /api/pick-file", s.pickFile)
 	mux.HandleFunc("POST /api/window", s.window)
 	mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Assets are embedded per build; revalidate so an upgraded binary
@@ -532,6 +537,28 @@ func (s *server) open(w http.ResponseWriter, r *http.Request) {
 	}
 	s.opts.OpenURL(in.URL)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// pickFile lets the user choose a file: {"path": current} → {"path": chosen},
+// "" when cancelled.
+func (s *server) pickFile(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+	if s.opts.PickFile == nil {
+		writeError(w, http.StatusNotFound, "不支持该操作")
+		return
+	}
+	path, err := s.opts.PickFile(strings.TrimSpace(in.Path))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("无法打开文件选择框: %v", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"path": path})
 }
 
 // window runs a tray panel action: {"action": "settings"} or {"action": "quit"}.

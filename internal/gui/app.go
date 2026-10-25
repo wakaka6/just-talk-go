@@ -13,7 +13,9 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -21,6 +23,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+
+	"github.com/c/just-talk-go/config"
 )
 
 // The PNGs are rendered from icons/tray-template.svg and the site's
@@ -65,6 +69,22 @@ func RunApp(o AppOptions) error {
 		}
 	}
 	var window, panel *application.WebviewWindow
+	o.PickFile = func(current string) (string, error) {
+		// macOS shows the message, the other platforms the title.
+		d := app.Dialog.OpenFile().SetTitle("选择热词文件").SetMessage("选择热词文件").AttachToWindow(window)
+		if current != "" {
+			d.SetDirectory(filepath.Dir(config.ExpandPath(current)))
+		}
+		path, err := d.PromptForSingleSelection()
+		// Keep the ~ form the config uses, so picking the file already set
+		// is no edit.
+		if home, _ := os.UserHomeDir(); home != "" {
+			if rel, ok := strings.CutPrefix(path, home+string(filepath.Separator)); ok {
+				path = "~/" + filepath.ToSlash(rel)
+			}
+		}
+		return path, err
+	}
 	show := func() {
 		panel.Hide()
 		window.Show()

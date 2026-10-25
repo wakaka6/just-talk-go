@@ -209,6 +209,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .unit { display: flex; align-items: center; gap: 6px; }
 .unit input { width: 96px; text-align: right; }
 
+.file-pick { display: flex; align-items: center; gap: 8px; width: 320px; max-width: 100%; }
+.file-pick input { flex: 1; width: auto; min-width: 0; }
+.file-pick input[readonly] { cursor: default; text-overflow: ellipsis; }
+.file-pick button { flex: none; }
+
 .switch {
   appearance: none;
   -webkit-appearance: none;

@@ -197,6 +197,15 @@ func TestOpenOnlyCatalogLinks(t *testing.T) {
 	}
 }
 
+// Browser mode types the path; it must not pop a dialog on the desktop.
+func TestPickFileOnlyInApp(t *testing.T) {
+	rec := httptest.NewRecorder()
+	Handler(Options{Config: config.Default()}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/pick-file", bytes.NewReader([]byte(`{"path":""}`))))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("web: status %d, want 404", rec.Code)
+	}
+}
+
 func TestWindowActionsOnlyInApp(t *testing.T) {
 	post := func(h http.Handler, action string) int {
 		rec := httptest.NewRecorder()

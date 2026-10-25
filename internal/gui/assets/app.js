@@ -67,7 +67,7 @@ function applyState(state) {
   $("configPath").title = state.configPath;
   form.elements.enabled.checked = draft.enabled;
   form.elements.continuousEnabled.checked = draft.continuousEnabled;
-  for (const name of ["pushToTalk", "continuousHotkey", "stopDelayMs", "hotwordsFile", "streamAddr"]) form.elements[name].value = draft[name];
+  for (const name of ["pushToTalk", "continuousHotkey", "stopDelayMs", "streamAddr"]) form.elements[name].value = draft[name];
   $("textOutput").replaceChildren(...state.textOutputs.map((o) => el("option", { value: o }, OUTPUT_LABELS[o] || o)));
   $("textOutput").value = draft.textOutput;
   $("language").replaceChildren(...state.languages.map((l) =>
@@ -80,6 +80,7 @@ function applyState(state) {
   renderSlots();
   renderDevices();
   renderHotwords();
+  renderHotwordsFile();
   renderModes();
   renderEngines();
   updateDirty();
@@ -354,6 +355,38 @@ function removeHotword(i) {
   updateDirty();
   $("hotwordInput").focus();
 }
+
+// The desktop window picks the hotwords file with the native dialog; a
+// browser cannot hand over a picked file's path, so --web types it.
+function renderHotwordsFile() {
+  const app = saved.shell === "app";
+  const input = $("hotwordsFile");
+  input.value = draft.hotwordsFile;
+  input.readOnly = app;
+  input.title = app ? draft.hotwordsFile : "";
+  input.placeholder = app ? "未选择" : "~/Documents/hotwords.txt";
+  $("hotwordsFilePick").hidden = !app;
+  $("hotwordsFileClear").hidden = !app || !draft.hotwordsFile;
+}
+
+function setHotwordsFile(path) {
+  draft.hotwordsFile = path;
+  renderHotwordsFile();
+  updateDirty();
+}
+
+async function pickHotwordsFile() {
+  try {
+    const { path } = await api("/api/pick-file", { path: draft.hotwordsFile });
+    if (path) setHotwordsFile(path);
+  } catch (err) {
+    setMessage(err.message, "error");
+  }
+}
+
+$("hotwordsFilePick").addEventListener("click", pickHotwordsFile);
+$("hotwordsFile").addEventListener("click", (ev) => { if (ev.target.readOnly) pickHotwordsFile(); });
+$("hotwordsFileClear").addEventListener("click", () => setHotwordsFile(""));
 
 $("hotwords").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) $("hotwordInput").focus(); });
 $("hotwordInput").addEventListener("keydown", (ev) => {
