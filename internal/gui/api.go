@@ -94,9 +94,10 @@ type settingsJSON struct {
 	Mode            string   `json:"mode"`
 	Device          string   `json:"device"`
 	Language        string   `json:"language"`
-	AutoSubmit      bool     `json:"autoSubmit"`
+	TextOutput      string   `json:"textOutput"`
 	StopDelayMs     int      `json:"stopDelayMs"`
 	Hotwords        []string `json:"hotwords"`
+	HotwordsFile    string   `json:"hotwordsFile"`
 	OverlayPosition string   `json:"overlayPosition"`
 	Engine          string   `json:"engine"`
 	// EngineConfigs carries only the engines whose fields the page edited.
@@ -127,6 +128,8 @@ type stateJSON struct {
 	OverlayPositions []string            `json:"overlayPositions"`
 	Languages        []settings.Language `json:"languages"`
 	Modes            []string            `json:"modes"`
+	// TextOutputs are the valid 识别结果去向 values, in display order.
+	TextOutputs []string `json:"textOutputs"`
 	// Devices are the input devices found now; an empty device setting means
 	// the system default. DevicesError explains an empty list.
 	Devices      []voice.InputDevice `json:"devices"`
@@ -162,15 +165,17 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 			Mode:            vc.Mode,
 			Device:          vc.Device,
 			Language:        vc.Language,
-			AutoSubmit:      vc.AutoSubmit,
+			TextOutput:      vc.TextOutput,
 			StopDelayMs:     vc.StopDelayMs,
 			Hotwords:        append([]string{}, vc.Hotwords...),
+			HotwordsFile:    vc.HotwordsFile,
 			OverlayPosition: cfg.Overlay.Position,
 			Engine:          settings.CurrentEngine(vc),
 		},
 		OverlayPositions: settings.OverlayPositionOptions(cfg.Overlay.Position),
 		Languages:        settings.LanguageOptions(vc.Language),
 		Modes:            []string{"toggle", "hold", "continuous"},
+		TextOutputs:      []string{config.OutputPaste, config.OutputClipboard, config.OutputNone},
 	}
 	if devices, err := voice.ListDevices(); err != nil {
 		st.DevicesError = err.Error()
@@ -328,6 +333,9 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	if in.Mode != "toggle" && in.Mode != "hold" && in.Mode != "continuous" {
 		return nil, fmt.Errorf("未知模式: %s", in.Mode)
 	}
+	if !config.ValidTextOutput(in.TextOutput) {
+		return nil, fmt.Errorf("未知输出去向: %s", in.TextOutput)
+	}
 	if in.StopDelayMs < 0 {
 		return nil, errors.New("停止延迟不能为负数")
 	}
@@ -353,7 +361,8 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	// The recorder reports an unknown device when it starts.
 	vc.Device = strings.TrimSpace(in.Device)
 	vc.Language = strings.TrimSpace(in.Language)
-	vc.AutoSubmit = in.AutoSubmit
+	vc.TextOutput = in.TextOutput
+	vc.HotwordsFile = strings.TrimSpace(in.HotwordsFile)
 	vc.StopDelayMs = in.StopDelayMs
 	vc.Engine = engine
 	next.Overlay.Position = in.OverlayPosition

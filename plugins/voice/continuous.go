@@ -187,7 +187,7 @@ func (p *VoicePlugin) runContinuousSession(ctx context.Context, vc config.VoiceC
 	if !ok {
 		return false, errContinuousNeedsStreaming
 	}
-	client, err := streaming.NewStream(sctx, speech.StreamParams{Lang: vc.Language, Hotwords: vc.Hotwords})
+	client, err := streaming.NewStream(sctx, speech.StreamParams{Lang: vc.Language, Hotwords: p.hotwords.load(p.logger, vc)})
 	if err != nil {
 		return false, err
 	}

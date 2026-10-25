@@ -64,7 +64,7 @@
             </div>
           </div>
           <div class="row">
-            <span class="label">模式<small>切换：按一下开始、再按一下结束；按住：按住说话、松开结束；持续转写：启动后一直转写，不注册热键、不上屏</small></span>
+            <span class="label">模式<small>会话怎么开始和结束。切换：按一下开始、再按一下结束；按住：按住说话、松开结束；持续转写：启动即开始，服务端掉线会自动重连并补发重连期间的音频，不注册热键</small></span>
             <div class="segmented" id="modes" role="radiogroup" aria-label="模式"></div>
           </div>
           <label class="row">
@@ -85,13 +85,17 @@
               <input type="text" id="hotwordInput" spellcheck="false" placeholder="添加热词，回车确认" aria-label="添加热词">
             </div>
           </div>
+          <label class="row">
+            <span class="label">热词文件<small>外部词表路径，一行一个词，# 开头为注释；与上面的热词合并，每次会话开始时重读，别的程序改完下一句就生效</small></span>
+            <input type="text" name="hotwordsFile" id="hotwordsFile" spellcheck="false" placeholder="~/Documents/hotwords.txt">
+          </label>
         </div>
 
         <h2 class="group-title">输出</h2>
         <div class="group">
           <label class="row">
-            <span class="label">自动上屏<small>识别完成后粘贴到当前输入框；关闭则只复制到剪贴板</small></span>
-            <input type="checkbox" class="switch" name="autoSubmit">
+            <span class="label">识别结果送到哪里<small>不输出 = 只转写，不碰输入框和剪贴板，结果进日志、浮层和识别结果订阅</small></span>
+            <select name="textOutput" id="textOutput"></select>
           </label>
           <label class="row">
             <span class="label">提示位置<small>录音状态提示显示在屏幕上的位置；刘海在其他平台按顶部居中处理</small></span>

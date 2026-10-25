@@ -23,6 +23,13 @@ const POSITION_LABELS = {
   "bottom-right": "右下角",
 };
 
+// 识别结果去向，与 config.OutputPaste / OutputClipboard / OutputNone 对应。
+const OUTPUT_LABELS = {
+  paste: "上屏（粘贴到输入框）",
+  clipboard: "仅复制到剪贴板",
+  none: "不输出",
+};
+
 // ---- tabs ----
 
 const PANES = ["general", "engine", "activity"];
@@ -58,8 +65,10 @@ function applyState(state) {
   document.body.classList.toggle("mac-app", state.shell === "app" && state.platform === "darwin");
   $("configPath").textContent = state.configPath;
   $("configPath").title = state.configPath;
-  for (const name of ["enabled", "autoSubmit"]) form.elements[name].checked = draft[name];
-  for (const name of ["pushToTalk", "stopDelayMs"]) form.elements[name].value = draft[name];
+  form.elements.enabled.checked = draft.enabled;
+  for (const name of ["pushToTalk", "stopDelayMs", "hotwordsFile"]) form.elements[name].value = draft[name];
+  $("textOutput").replaceChildren(...state.textOutputs.map((o) => el("option", { value: o }, OUTPUT_LABELS[o] || o)));
+  $("textOutput").value = draft.textOutput;
   $("language").replaceChildren(...state.languages.map((l) =>
     el("option", { value: l.code }, l.code && l.label !== l.code ? `${l.label}（${l.code}）` : l.label)));
   $("language").value = draft.language;
@@ -503,9 +512,10 @@ $("sheet").addEventListener("keydown", (ev) => {
 
 function readForm() {
   draft.enabled = form.elements.enabled.checked;
-  draft.autoSubmit = form.elements.autoSubmit.checked;
   draft.pushToTalk = form.elements.pushToTalk.value;
   draft.device = form.elements.device.value;
+  draft.textOutput = form.elements.textOutput.value;
+  draft.hotwordsFile = form.elements.hotwordsFile.value.trim();
   draft.language = form.elements.language.value;
   draft.stopDelayMs = Number.parseInt(form.elements.stopDelayMs.value, 10) || 0;
   draft.overlayPosition = form.elements.overlayPosition.value;

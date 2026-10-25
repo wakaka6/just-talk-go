@@ -304,7 +304,7 @@ type VoicePlugin struct {
 	asrClient              speech.StreamSession
 	asrCancel              context.CancelFunc
 	audioDone              <-chan struct{}
-	autoSubmit             bool
+	textOutput             string
 	stopDelayMs            int
 	pendingDone            int
 	finishingSessions      map[uint64]struct{}
@@ -320,6 +320,8 @@ type VoicePlugin struct {
 	streamPrefix string
 	stream       *streamServer
 	streamAddr   string
+	// hotwords reads hotwords_file at the start of every session.
+	hotwords hotwordsLoader
 	// runCtx is the Start context; nil before Start and after Stop.
 	runCtx     context.Context
 	contCancel context.CancelFunc
@@ -333,7 +335,7 @@ type recordingSession struct {
 	asrClient   speech.StreamSession
 	asrCancel   context.CancelFunc
 	audioDone   <-chan struct{}
-	autoSubmit  bool
+	textOutput  string
 	userStopped bool
 	startedAt   time.Time
 }
@@ -432,7 +434,7 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	modeChanged := p.mode != mode
 	p.combos = combos
 	p.mode = mode
-	p.autoSubmit = vc.AutoSubmit
+	p.textOutput = vc.TextOutput
 	p.stopDelayMs = vc.StopDelayMs
 	for c := range p.heldCombos {
 		if modeChanged || !slices.Contains(combos, c) {
@@ -442,7 +444,7 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	p.mu.Unlock()
 
 	p.logger.Info("config_reloaded", "hotkeys", combos, "mode", mode,
-		"auto_submit", vc.AutoSubmit, "stop_delay_ms", vc.StopDelayMs)
+		"text_output", vc.TextOutput, "stop_delay_ms", vc.StopDelayMs)
 
 	// Suppress depends on mode, so a mode change re-registers every combo;
 	// otherwise only added/removed combos are touched.
@@ -687,7 +689,7 @@ func (p *VoicePlugin) startRecording() {
 func (p *VoicePlugin) connectASR(ctx context.Context, cancel context.CancelFunc, sessionID, sessionGen uint64, rec *Recorder) {
 	vc := p.cfg.Voice
 	eng, err := asrcfg.Build(vc)
-	params := speech.StreamParams{Lang: vc.Language, Hotwords: vc.Hotwords}
+	params := speech.StreamParams{Lang: vc.Language, Hotwords: p.hotwords.load(p.logger, vc)}
 	var client speech.StreamSession
 	if err == nil {
 		if streaming, ok := eng.(speech.StreamingEngine); ok {
@@ -854,7 +856,7 @@ func (p *VoicePlugin) detachRecordingLocked() *recordingSession {
 		asrClient:   p.asrClient,
 		asrCancel:   p.asrCancel,
 		audioDone:   p.audioDone,
-		autoSubmit:  p.autoSubmit,
+		textOutput:  p.textOutput,
 		userStopped: p.userStopped,
 		startedAt:   p.startedAt,
 	}
@@ -945,7 +947,7 @@ func (p *VoicePlugin) finishRecordingSession(session *recordingSession) {
 				audioDuration = time.Since(session.startedAt)
 			}
 			recordTUIStats(text, audioDuration)
-			p.dispatchTextOutput(text, session.autoSubmit)
+			p.dispatchTextOutput(text, session.textOutput)
 		}
 		p.logger.Debug("finish session: closing ASR client")
 		closeDone := make(chan error, 1)
@@ -965,12 +967,18 @@ func (p *VoicePlugin) finishRecordingSession(session *recordingSession) {
 	p.logger.Debug("finish session: done")
 }
 
-func (p *VoicePlugin) dispatchTextOutput(text string, autoSubmit bool) {
+func (p *VoicePlugin) dispatchTextOutput(text string, output string) {
+	if output == config.OutputNone {
+		// 只转写：结果已经进了日志、浮层和识别结果订阅，不碰输入框和剪贴板。
+		p.logger.Debug("text output: disabled", "text_len", len(text))
+		pout("\n\U0001f4dd 已转写（不输出）")
+		return
+	}
 	beginOverlayOutput()
 	go func() {
 		detail := ""
 		defer func() { finishOverlayOutput(text, detail) }()
-		if autoSubmit {
+		if output == config.OutputPaste {
 			if err := autotype.Paste(text, p.logger); err != nil {
 				pout("❌ 上屏失败: %v", err)
 			} else {

@@ -88,17 +88,20 @@ func New(cfg *config.Config) *Model {
 	// Devices are enumerated asynchronously (fetchDevices); until that lands
 	// the select offers the system default and whatever is configured.
 	devLabels, devValues, devIdx := deviceOptions(nil, vc.Device)
+	outLabels := []string{"上屏（粘贴到输入框）", "仅复制到剪贴板", "不输出"}
+	outValues := []string{config.OutputPaste, config.OutputClipboard, config.OutputNone}
 	fs := []field{
 		{label: "语音输入", key: "enabled", help: "关闭后不注册热键", fType: fToggle, boolVal: vc.Enabled},
 		{label: "录音设备", key: "device", help: deviceHelp, fType: fSelect, opts: devLabels, optVals: devValues, optIdx: devIdx},
 		{label: "热键", key: "push_to_talk", help: "例: Alt+Super / F9 / Ctrl+Alt+Tab；多个用逗号分隔，如 Fn, F13；不支持字母、数字、标点、空格等普通字符键", fType: fString, input: ti(vc.PushToTalk)},
-		{label: "模式", key: "mode", help: "toggle 切换 / hold 按住 / continuous 持续转写（不上屏）", fType: fSelect, opts: []string{"toggle", "hold", "continuous"}, optIdx: idxOf([]string{"toggle", "hold", "continuous"}, vc.Mode)},
+		{label: "模式", key: "mode", help: "会话怎么开始和结束：toggle 按一下开、再按一下停 / hold 按住说话 / continuous 启动即开始，会话断了自动重连、不注册热键", fType: fSelect, opts: []string{"toggle", "hold", "continuous"}, optIdx: idxOf([]string{"toggle", "hold", "continuous"}, vc.Mode)},
 		{label: "引擎", key: "engine", help: "回车选择识别引擎；流式引擎支持实时字幕", fType: fAction},
 		{label: "引擎配置", key: "engine_config", help: "回车配置当前引擎的凭据与参数；各引擎独立保存", fType: fAction},
 		{label: "语言", key: "language", help: "BCP-47，如 zh-CN；空 = 引擎默认", fType: fString, input: ti(vc.Language)},
-		{label: "自动上屏", key: "auto_submit", help: "识别后自动粘贴", fType: fToggle, boolVal: vc.AutoSubmit},
+		{label: "输出", key: "text_output", help: "识别结果送到哪里；不输出 = 只转写，结果进日志和识别结果订阅", fType: fSelect, opts: outLabels, optVals: outValues, optIdx: idxOf(outValues, vc.TextOutput)},
 		{label: "停止延迟(ms)", key: "stop_delay_ms", help: "松手后补录毫秒", fType: fString, input: ti(fmt.Sprintf("%d", vc.StopDelayMs))},
 		{label: "热词", key: "hotwords", help: "逗号分隔术语", fType: fString, input: ti(strings.Join(vc.Hotwords, ", "))},
+		{label: "热词文件", key: "hotwords_file", help: "外部词表路径，一行一个词，# 开头为注释；与上面的热词合并，每次会话开始时重读", fType: fString, input: ti(vc.HotwordsFile)},
 		{label: "提示位置", key: "overlay_position", help: "notch 为 macOS 刘海，其他平台按 top-center 处理；保存后立即生效", fType: fSelect, opts: positions, optIdx: idxOf(positions, cfg.Overlay.Position)},
 	}
 	return &Model{cfg: cfg, fields: fs, logs: make([]string, 0, 100), cursor: -1, showLogs: true}
@@ -270,12 +273,14 @@ func (m *Model) save() {
 			vc.Device = f.selected()
 		case "language":
 			vc.Language = strings.TrimSpace(f.input.Value())
-		case "auto_submit":
-			vc.AutoSubmit = f.boolVal
+		case "text_output":
+			vc.TextOutput = f.selected()
 		case "stop_delay_ms":
 			fmt.Sscanf(f.input.Value(), "%d", &vc.StopDelayMs)
 		case "hotwords":
 			vc.Hotwords = settings.SplitList(f.input.Value())
+		case "hotwords_file":
+			vc.HotwordsFile = strings.TrimSpace(f.input.Value())
 		case "overlay_position":
 			next.Overlay.Position = f.selected()
 		}

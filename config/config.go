@@ -39,7 +39,10 @@ type VoiceConfig struct {
 	Gain        int    `toml:"gain"`
 	StopDelayMs int    `toml:"stop_delay_ms"`
 	Language    string `toml:"language"`
-	AutoSubmit  bool   `toml:"auto_submit"`
+	// TextOutput 识别结果送到哪里：OutputPaste / OutputClipboard / OutputNone。
+	TextOutput string `toml:"text_output"`
+	// AutoSubmit 旧版开关，仅用于迁移到 TextOutput；迁移后置空，存盘时不再写出。
+	AutoSubmit *bool `toml:"auto_submit,omitempty"`
 	// StreamAddr 非空时在该回环地址开启 WebSocket 订阅服务（路径 /asr），
 	// 向订阅者推送会话事件与每条识别结果；空 = 关闭。
 	StreamAddr string `toml:"stream_addr"`
@@ -53,6 +56,36 @@ type VoiceConfig struct {
 	AccessKey    string            `toml:"access_key"`
 	ResourceID   string            `toml:"resource_id"`
 	Hotwords     []string          `toml:"hotwords"`
+	// HotwordsFile 外部词表：一行一个词，# 开头为注释，与 Hotwords 合并。
+	// 每次会话开始时重读，所以外部程序改完文件下一句就生效。
+	HotwordsFile string `toml:"hotwords_file"`
+}
+
+// TextOutput 的取值。
+const (
+	// OutputPaste 粘贴到当前输入框（同时进剪贴板）。
+	OutputPaste = "paste"
+	// OutputClipboard 只写剪贴板。
+	OutputClipboard = "clipboard"
+	// OutputNone 不输出：只转写，结果进日志、浮层和识别结果订阅。
+	OutputNone = "none"
+)
+
+// ValidTextOutput 报告 v 是否是合法的输出去向。
+func ValidTextOutput(v string) bool {
+	return v == OutputPaste || v == OutputClipboard || v == OutputNone
+}
+
+// ExpandPath 把开头的 ~ 换成 home；路径是用户手填的，写 ~ 很自然。
+func ExpandPath(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, strings.TrimPrefix(path, "~"))
 }
 
 // EngineConfigFor 返回指定引擎的私有配置；未分组时回退旧版平铺配置。
@@ -92,7 +125,7 @@ func Default() *Config {
 	return &Config{
 		Voice: VoiceConfig{
 			Enabled: true, Mode: "toggle", PushToTalk: "Alt+Super",
-			Language: "zh-CN", AutoSubmit: true, ResourceID: "volc.bigasr.sauc.duration",
+			Language: "zh-CN", TextOutput: OutputPaste, ResourceID: "volc.bigasr.sauc.duration",
 		},
 		Overlay: OverlayConfig{
 			Enabled: true, Position: DefaultOverlayPosition(), IdleVisible: false, ShowText: true, Scale: 1.0,
@@ -124,10 +157,25 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("read config %s: %w", path, err)
 	}
-	if err := toml.Unmarshal(data, cfg); err != nil {
+	md, err := toml.Decode(string(data), cfg)
+	if err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	cfg.Voice.migrateOutput(md.IsDefined("voice", "text_output"))
 	return cfg, nil
+}
+
+// migrateOutput 把旧的 auto_submit 换成 text_output：只有没显式写 text_output 时才看它
+// （Default() 已经填了 paste，光看值分不出没写和写了 paste）。
+// 迁移后清掉旧字段，下次存盘配置里就只剩 text_output。
+func (vc *VoiceConfig) migrateOutput(explicit bool) {
+	if !explicit || !ValidTextOutput(vc.TextOutput) {
+		vc.TextOutput = OutputPaste
+		if vc.AutoSubmit != nil && !*vc.AutoSubmit {
+			vc.TextOutput = OutputClipboard
+		}
+	}
+	vc.AutoSubmit = nil
 }
 
 func FindConfig() string {

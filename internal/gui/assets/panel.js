@@ -5,7 +5,8 @@
 // settings. Editing happens in the settings window, which 打开设置 brings
 // forward.
 
-const MODE_LABELS = { toggle: "切换", hold: "按住" };
+const MODE_LABELS = { toggle: "切换", hold: "按住", continuous: "持续转写" };
+const OUTPUT_LABELS = { paste: "自动上屏", clipboard: "复制到剪贴板", none: "不输出" };
 
 let state = null;
 
@@ -29,7 +30,7 @@ function renderSummary() {
     engine && !engine.configured ? el("span", { class: "badge warn" }, "需要配置") : null));
   const lang = state.languages.find((l) => l.code === s.language);
   rows.push(summaryRow("语言", lang ? lang.label : s.language));
-  rows.push(summaryRow("识别后", s.autoSubmit ? "自动上屏" : "复制到剪贴板"));
+  rows.push(summaryRow("识别后", OUTPUT_LABELS[s.textOutput] || s.textOutput));
   $("summary").replaceChildren(...rows);
 }
 

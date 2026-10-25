@@ -42,6 +42,7 @@ func validSettings(cfg *config.Config) settingsJSON {
 		Enabled:         cfg.Voice.Enabled,
 		PushToTalk:      cfg.Voice.PushToTalk,
 		Mode:            cfg.Voice.Mode,
+		TextOutput:      cfg.Voice.TextOutput,
 		Language:        cfg.Voice.Language,
 		OverlayPosition: cfg.Overlay.Position,
 		Engine:          "openai",
@@ -93,6 +94,7 @@ func TestSaveRejectsInvalidValuesWithoutWriting(t *testing.T) {
 		"text key hotkey": func(s *settingsJSON) { s.PushToTalk = "Ctrl+A" },
 		"fn function key": func(s *settingsJSON) { s.PushToTalk = "Fn+F5" },
 		"unknown mode":    func(s *settingsJSON) { s.Mode = "" },
+		"unknown output":  func(s *settingsJSON) { s.TextOutput = "whatever" },
 		"negative delay":  func(s *settingsJSON) { s.StopDelayMs = -1 },
 		"unknown position": func(s *settingsJSON) {
 			s.OverlayPosition = "middle"
