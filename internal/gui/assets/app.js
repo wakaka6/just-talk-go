@@ -304,6 +304,11 @@ function renderModes() {
     "aria-checked": String(draft.mode === m),
     onclick: () => { draft.mode = m; renderModes(); updateDirty(); },
   }, labels[m] || m)));
+  // 持续转写没有“说完了”这个时刻，所以不输出文本；别让设置默默失效。
+  const inert = draft.mode === "continuous";
+  $("textOutputNote").textContent = inert ? "持续转写不输出文本，此项不生效" : "";
+  $("textOutputNote").hidden = !inert;
+  $("textOutput").disabled = inert;
 }
 
 // ---- hotwords ----

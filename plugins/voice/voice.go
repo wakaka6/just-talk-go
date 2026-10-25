@@ -411,7 +411,7 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	}
 	mode := vc.Mode
 	if mode == "" {
-		mode = "hold"
+		mode = config.ModeHold
 	}
 	// Continuous mode registers no voice hotkeys: nothing may start a
 	// session that pastes text.
@@ -460,7 +460,7 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 		if !modeChanged && slices.Contains(oldCombos, c) {
 			continue
 		}
-		suppress := mode == "hold"
+		suppress := mode == config.ModeHold
 		if runtime.GOOS == "windows" && c.IsModifierOnly() {
 			suppress = false
 		}
@@ -491,7 +491,7 @@ func (p *VoicePlugin) onHotkey(evt hotkey.Event) {
 	p.mu.Lock()
 	mode := p.mode
 	p.mu.Unlock()
-	if mode == "toggle" && evt.Type != hotkey.KeyDown {
+	if mode == config.ModeToggle && evt.Type != hotkey.KeyDown {
 		p.logger.Debug("voice hotkey ignored", "type", evt.Type, "mode", mode)
 		return
 	}
@@ -539,7 +539,7 @@ func (p *VoicePlugin) handleHotkey(evt hotkey.Event) {
 	p.mu.Unlock()
 	p.logger.Debug("voice hotkey handling", "type", evt.Type, "mode", mode, "recording", rec, "stopping", stopping)
 	switch mode {
-	case "hold":
+	case config.ModeHold:
 		if evt.Type == hotkey.KeyDown {
 			p.setHeld(evt.Combo, true)
 			p.clearHoldReleased()
@@ -551,7 +551,7 @@ func (p *VoicePlugin) handleHotkey(evt hotkey.Event) {
 		} else if evt.Type == hotkey.KeyUp && !p.setHeld(evt.Combo, false) {
 			p.markHoldReleased()
 		}
-	case "toggle":
+	case config.ModeToggle:
 		if evt.Type != hotkey.KeyDown {
 			return
 		}
@@ -676,7 +676,7 @@ func (p *VoicePlugin) startRecording() {
 	p.stopAt = time.Time{}
 	p.clearErrorLocked()
 	p.asrCancel = cancel
-	shouldStopImmediately := p.mode == "hold" && p.holdReleased
+	shouldStopImmediately := p.mode == config.ModeHold && p.holdReleased
 	p.publishStatusLocked()
 	p.mu.Unlock() // Release lock before slow WebSocket dial
 

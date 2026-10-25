@@ -94,7 +94,7 @@ func New(cfg *config.Config) *Model {
 		{label: "语音输入", key: "enabled", help: "关闭后不注册热键", fType: fToggle, boolVal: vc.Enabled},
 		{label: "录音设备", key: "device", help: deviceHelp, fType: fSelect, opts: devLabels, optVals: devValues, optIdx: devIdx},
 		{label: "热键", key: "push_to_talk", help: "例: Alt+Super / F9 / Ctrl+Alt+Tab；多个用逗号分隔，如 Fn, F13；不支持字母、数字、标点、空格等普通字符键", fType: fString, input: ti(vc.PushToTalk)},
-		{label: "模式", key: "mode", help: "会话怎么开始和结束：toggle 按一下开、再按一下停 / hold 按住说话 / continuous 启动即开始，会话断了自动重连、不注册热键", fType: fSelect, opts: []string{"toggle", "hold", "continuous"}, optIdx: idxOf([]string{"toggle", "hold", "continuous"}, vc.Mode)},
+		{label: "模式", key: "mode", help: "会话怎么开始和结束：toggle 按一下开、再按一下停 / hold 按住说话 / continuous 启动即开始，会话断了自动重连、不注册热键", fType: fSelect, opts: config.ModeOptions(), optIdx: idxOf(config.ModeOptions(), vc.Mode)},
 		{label: "引擎", key: "engine", help: "回车选择识别引擎；流式引擎支持实时字幕", fType: fAction},
 		{label: "引擎配置", key: "engine_config", help: "回车配置当前引擎的凭据与参数；各引擎独立保存", fType: fAction},
 		{label: "语言", key: "language", help: "BCP-47，如 zh-CN；空 = 引擎默认", fType: fString, input: ti(vc.Language)},
@@ -118,6 +118,16 @@ func (f field) selected() string {
 		return f.optVals[f.optIdx]
 	}
 	return f.opts[f.optIdx]
+}
+
+// selectedMode is the mode chosen in the form, including unsaved edits.
+func (m *Model) selectedMode() string {
+	for _, f := range m.fields {
+		if f.key == "mode" {
+			return f.selected()
+		}
+	}
+	return m.cfg.Voice.Mode
 }
 
 func idxOf(opts []string, v string) int {
@@ -524,6 +534,10 @@ func (m *Model) renderField(i int, f field) string {
 		v := f.opts[f.optIdx]
 		if v == "" {
 			v = "(未设置)"
+		}
+		// 持续转写没有“说完了”这个时刻，所以不输出文本；说清楚，别让设置默默失效。
+		if f.key == "text_output" && m.selectedMode() == config.ModeContinuous {
+			return dStyle.Render(v + "  (持续转写不输出文本，此项不生效)")
 		}
 		if editing {
 			return aStyle.Render("[" + v + " ▲▼]")

@@ -76,6 +76,24 @@ func ValidTextOutput(v string) bool {
 	return v == OutputPaste || v == OutputClipboard || v == OutputNone
 }
 
+// 录音模式：一个 ASR 会话什么时候开始、什么时候结束。
+const (
+	// ModeToggle 按一下开始，再按一下结束。
+	ModeToggle = "toggle"
+	// ModeHold 按住说话，松开结束。
+	ModeHold = "hold"
+	// ModeContinuous 启动即开始，会话断了自动重连；不注册热键，也不输出文本。
+	ModeContinuous = "continuous"
+)
+
+// ModeOptions 返回界面里可选的录音模式，按展示顺序。
+func ModeOptions() []string { return []string{ModeToggle, ModeHold, ModeContinuous} }
+
+// ValidMode 报告 m 是否是合法的录音模式。
+func ValidMode(m string) bool {
+	return m == ModeToggle || m == ModeHold || m == ModeContinuous
+}
+
 // ExpandPath 把开头的 ~ 换成 home；路径是用户手填的，写 ~ 很自然。
 func ExpandPath(path string) string {
 	if path != "~" && !strings.HasPrefix(path, "~/") {
@@ -124,7 +142,7 @@ func equalStringMap(a, b map[string]string) bool {
 func Default() *Config {
 	return &Config{
 		Voice: VoiceConfig{
-			Enabled: true, Mode: "toggle", PushToTalk: "Alt+Super",
+			Enabled: true, Mode: ModeToggle, PushToTalk: "Alt+Super",
 			Language: "zh-CN", TextOutput: OutputPaste, ResourceID: "volc.bigasr.sauc.duration",
 		},
 		Overlay: OverlayConfig{

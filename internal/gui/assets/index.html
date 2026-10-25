@@ -93,10 +93,13 @@
 
         <h2 class="group-title">输出</h2>
         <div class="group">
-          <label class="row">
-            <span class="label">识别结果送到哪里<small>不输出 = 只转写，不碰输入框和剪贴板，结果进日志、浮层和识别结果订阅</small></span>
-            <select name="textOutput" id="textOutput"></select>
-          </label>
+          <div class="row device-row">
+            <span class="label">识别结果送到哪里<small>Just Talk 自己把文字放到哪里；不输出 = 只转写，不碰输入框和剪贴板。订阅识别结果的程序不受这个设置影响</small></span>
+            <div class="stack">
+              <select name="textOutput" id="textOutput"></select>
+              <p id="textOutputNote" class="field-note" hidden></p>
+            </div>
+          </div>
           <label class="row">
             <span class="label">提示位置<small>录音状态提示显示在屏幕上的位置；刘海在其他平台按顶部居中处理</small></span>
             <select name="overlayPosition" id="overlayPosition"></select>

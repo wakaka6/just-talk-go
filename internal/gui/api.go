@@ -176,7 +176,7 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 		},
 		OverlayPositions: settings.OverlayPositionOptions(cfg.Overlay.Position),
 		Languages:        settings.LanguageOptions(vc.Language),
-		Modes:            []string{"toggle", "hold", "continuous"},
+		Modes:            config.ModeOptions(),
 		TextOutputs:      []string{config.OutputPaste, config.OutputClipboard, config.OutputNone},
 	}
 	if devices, err := voice.ListDevices(); err != nil {
@@ -336,7 +336,7 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	if err := settings.ValidateHotkeys(pushToTalk); err != nil {
 		return nil, err
 	}
-	if in.Mode != "toggle" && in.Mode != "hold" && in.Mode != "continuous" {
+	if !config.ValidMode(in.Mode) {
 		return nil, fmt.Errorf("未知模式: %s", in.Mode)
 	}
 	if !config.ValidTextOutput(in.TextOutput) {

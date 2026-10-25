@@ -15,7 +15,7 @@ import (
 // modeContinuous transcribes without hotkeys: sessions start with the plugin
 // and reconnect whenever they end. Results only go to the log, overlay and
 // stream subscribers; nothing is ever pasted, typed or copied.
-const modeContinuous = "continuous"
+const modeContinuous = config.ModeContinuous
 
 const (
 	continuousBackoffMin = 500 * time.Millisecond
