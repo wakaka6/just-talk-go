@@ -182,6 +182,27 @@ func TestSetEnabledKeepsOtherSettings(t *testing.T) {
 	}
 }
 
+func TestSetContinuousKeepsOtherSettings(t *testing.T) {
+	isolate(t)
+	cur := config.Default()
+	cur.Voice.PushToTalk = "F9"
+	cur.Voice.Continuous.Device = "BlackHole 2ch"
+	h := Handler(Options{Config: cur})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/continuous", bytes.NewReader([]byte(`{"enabled":true}`))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+	}
+	saved, err := config.Load("config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vc := saved.Voice
+	if !vc.Continuous.Enabled || vc.Continuous.Device != "BlackHole 2ch" || vc.PushToTalk != "F9" || !vc.Enabled {
+		t.Fatalf("saved continuous=%v device=%q hotkey=%q enabled=%v", vc.Continuous.Enabled, vc.Continuous.Device, vc.PushToTalk, vc.Enabled)
+	}
+}
+
 func TestOpenOnlyCatalogLinks(t *testing.T) {
 	var opened []string
 	h := Handler(Options{Config: config.Default(), OpenURL: func(u string) { opened = append(opened, u) }})

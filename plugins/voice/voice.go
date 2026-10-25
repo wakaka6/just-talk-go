@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -386,12 +387,14 @@ func (p *VoicePlugin) Start(ctx context.Context) error {
 	p.runCtx = ctx
 	p.publishStatusLocked()
 	p.mu.Unlock()
+	liveVoice.Store(p)
 	p.syncContinuous()
 	<-ctx.Done()
 	return ctx.Err()
 }
 
 func (p *VoicePlugin) Stop() error {
+	liveVoice.CompareAndSwap(p, nil)
 	p.mu.Lock()
 	p.runCtx = nil
 	p.mu.Unlock()
@@ -570,16 +573,56 @@ func (p *VoicePlugin) onContinuousHotkey(evt hotkey.Event) {
 	p.contEnabled = !p.contEnabled
 	on := p.contEnabled
 	p.mu.Unlock()
-	p.logger.Info("continuous toggled by hotkey", "enabled", on)
+	p.continuousSwitched(on, "hotkey")
+}
+
+// continuousSwitched reports a change of the service's running state and
+// hands the start or stop to the sync worker; see contSync.
+func (p *VoicePlugin) continuousSwitched(on bool, by string) {
+	p.logger.Info("continuous switched", "enabled", on, "by", by)
 	if on {
 		pout("\U0001f3a7 持续转写：开")
 	} else {
 		pout("\U0001f3a7 持续转写：关")
 	}
-	// Hand the work to the sync worker; see contSync.
 	select {
 	case p.contSync <- struct{}{}:
 	default:
+	}
+}
+
+// liveVoice is the running voice plugin, for the tray panel's continuous
+// transcription switch. The engine loads one voice plugin.
+var liveVoice atomic.Pointer[VoicePlugin]
+
+// ContinuousOn reports whether continuous transcription is switched on right
+// now: by its setting, or by its hotkey since. It still needs voice input on
+// to run.
+func ContinuousOn() bool {
+	p := liveVoice.Load()
+	if p == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.contEnabled
+}
+
+// SetContinuous switches continuous transcription the way its hotkey does.
+// The tray panel calls it next to saving the setting: when the hotkey turned
+// the service on over a saved "off", saving "off" again changes nothing in
+// the config, and the service must still stop.
+func SetContinuous(on bool) {
+	p := liveVoice.Load()
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	changed := p.contEnabled != on
+	p.contEnabled = on
+	p.mu.Unlock()
+	if changed {
+		p.continuousSwitched(on, "panel")
 	}
 }
 

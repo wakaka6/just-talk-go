@@ -55,6 +55,31 @@ func TestContinuousHotkeyTogglesTheService(t *testing.T) {
 	}
 }
 
+// The tray panel saves the setting and switches the service. After the
+// hotkey turned it on over a saved "off", saving "off" changes nothing in
+// the config, and the panel's off must still stop it.
+func TestPanelSwitchStopsWhatTheHotkeyStarted(t *testing.T) {
+	cfg := config.Default()
+	cfg.Voice.PushToTalk = "Fn"
+	cfg.Voice.Continuous.Hotkey = "F13"
+	p, _ := continuousPlugin(t, cfg)
+	liveVoice.Store(p)
+	t.Cleanup(func() { liveVoice.Store(nil) })
+
+	p.onContinuousHotkey(hotkey.Event{Combo: comboF13, Type: hotkey.KeyDown})
+	if !ContinuousOn() {
+		t.Fatal("the panel does not see what the hotkey switched on")
+	}
+	same := *cfg
+	if err := p.registerFromConfig(&same); err != nil {
+		t.Fatal(err)
+	}
+	SetContinuous(false)
+	if ContinuousOn() {
+		t.Fatal("the panel turned it off, but it is still on")
+	}
+}
+
 // Editing the setting is an explicit instruction and outranks an earlier
 // toggle; a reload that does not touch it must leave the toggle alone.
 func TestConfigReloadOverridesTheToggleOnlyWhenItChanges(t *testing.T) {

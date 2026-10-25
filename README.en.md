@@ -130,7 +130,7 @@ If the install directory is not on your `PATH`, follow the hint printed by the c
 
 1. Obtain Doubao large-model ASR credentials (App Key / Access Key).
 2. Run `just-talk --doctor` to check the microphone, clipboard tools, and permissions.
-3. Run `just-talk` to open the settings window, pick a channel under “识别引擎” (Doubao streaming by default), fill in its credentials, and click “保存” (or press `Cmd/Ctrl+S`). Closing the window keeps Just Talk running. Left-click the menu bar/tray icon for a small panel with the live state, the latest transcript, usage statistics, and the current settings, with a “语音输入” switch to turn voice input on or off; its “打开设置” button reopens the settings window. Right-click opens the tray menu. Quit with “退出” in the panel or the tray menu. Prefer the terminal? Run `just-talk --tui`.
+3. Run `just-talk` to open the settings window, pick a channel under “识别引擎” (Doubao streaming by default), fill in its credentials, and click “保存” (or press `Cmd/Ctrl+S`). Closing the window keeps Just Talk running. Left-click the menu bar/tray icon for a small panel with the live state, the latest transcript, usage statistics, and the current settings, with “语音输入” and “持续转写” switches to turn voice input and continuous transcription on or off; its “打开设置” button reopens the settings window. Right-click opens the tray menu. Quit with “退出” in the panel or the tray menu. Prefer the terminal? Run `just-talk --tui`.
 4. Press the `push_to_talk` hotkey (default `Alt+Super`; `Option+Command` on macOS) to start/stop recording. `text_output` decides where recognized text goes; by default it is pasted into the focused field.
 
 ### Permissions
@@ -291,6 +291,8 @@ This path has no finger on a key: in dictation a person decides where a sentence
 **It has a hotkey too**: bind one in `[voice.continuous] hotkey` and press it to start the service, press it again to stop — the same way you switch dictation on and off. The difference is what the key bounds: a whole service rather than a sentence, so it only toggles and there is no hold — nobody holds a key down for an entire meeting, and sentence boundaries are the silence gate's job anyway. The key changes the **running state** only; it never writes the config file. Editing `enabled` in the settings afterwards overrides what the key chose (an explicit instruction wins), while a reload that leaves the setting alone leaves the key's choice alone. It cannot be the same combo as a dictation hotkey; the settings window and the TUI refuse to save that.
 
 It answers to `[voice] enabled`: turning voice input off (including the “语音输入” switch in the tray panel) also stops continuous transcription and unregisters its hotkey. The subscription server depends only on `stream_enabled` and keeps running.
+
+The tray panel has a “持续转写” switch too. It shows the **running state**, so it follows the hotkey; clicking it both saves the setting (it survives a restart) and switches the running service, so a service the hotkey started over a saved “off” still stops when you turn it off in the panel. It is greyed out while voice input is off.
 
 An old `mode = "continuous"` migrates on load: `[voice.continuous] enabled = true`, the `device` moves to that path, and **the hotkey is cleared** — that config registered no hotkey, so inventing a dictation that types into the focused window would be the surprise. No hotkey means no dictation, which is how a transcription-only instance is configured.
 

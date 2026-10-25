@@ -762,9 +762,9 @@ async function boot() {
   poll();
 }
 
-// The tray panel can switch voice input while this page is open. Take the
-// saved settings again on focus; with unsaved edits only the switch
-// follows, and only if it was not edited here.
+// The tray panel can switch voice input and continuous transcription while
+// this page is open. Take the saved settings again on focus; with unsaved
+// edits only those switches follow, and only if they were not edited here.
 window.addEventListener("focus", async () => {
   if (!saved || saving || sheet) return;
   let fresh;
@@ -773,11 +773,13 @@ window.addEventListener("focus", async () => {
     applyState(fresh);
     return;
   }
-  if (draft.enabled === saved.settings.enabled) {
-    draft.enabled = fresh.settings.enabled;
-    form.elements.enabled.checked = draft.enabled;
+  for (const name of ["enabled", "continuousEnabled"]) {
+    if (draft[name] === saved.settings[name]) {
+      draft[name] = fresh.settings[name];
+      form.elements[name].checked = draft[name];
+    }
+    saved.settings[name] = fresh.settings[name];
   }
-  saved.settings.enabled = fresh.settings.enabled;
   updateDirty();
 });
 

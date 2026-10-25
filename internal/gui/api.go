@@ -83,6 +83,7 @@ func Handler(opts Options) http.Handler {
 	mux.HandleFunc("GET /api/status", s.status)
 	mux.HandleFunc("POST /api/settings", s.save)
 	mux.HandleFunc("POST /api/enabled", s.setEnabled)
+	mux.HandleFunc("POST /api/continuous", s.setContinuous)
 	mux.HandleFunc("POST /api/hotkey/check", s.checkHotkey)
 	mux.HandleFunc("POST /api/hotkey/capture", s.capture)
 	mux.HandleFunc("POST /api/open", s.open)
@@ -222,9 +223,12 @@ type statusJSON struct {
 	PendingFinishes int    `json:"pendingFinishes"`
 	SessionID       uint64 `json:"sessionId"`
 	// StreamURL is where subscribers connect; empty when the server is off.
-	StreamURL         string   `json:"streamUrl"`
-	StreamSubscribers int      `json:"streamSubscribers"`
-	Debug             []string `json:"debug,omitempty"`
+	StreamURL         string `json:"streamUrl"`
+	StreamSubscribers int    `json:"streamSubscribers"`
+	// ContinuousOn is the service's running switch, which its hotkey can flip
+	// without touching the saved setting.
+	ContinuousOn bool     `json:"continuousOn"`
+	Debug        []string `json:"debug,omitempty"`
 }
 
 type statsJSON struct {
@@ -245,6 +249,7 @@ func (s *server) status(w http.ResponseWriter, r *http.Request) {
 		SessionID:       vs.SessionID,
 	}
 	st.StreamURL, st.StreamSubscribers = voice.StreamStatus()
+	st.ContinuousOn = voice.ContinuousOn()
 	if !vs.StopAt.IsZero() {
 		st.StopInMs = max(vs.StopAt.Sub(now).Milliseconds(), 0)
 	}
@@ -325,12 +330,46 @@ func (s *server) setEnabled(w http.ResponseWriter, r *http.Request) {
 	s.commitLocked(w, &next)
 }
 
+// setContinuous turns continuous transcription on or off ({"enabled": bool})
+// for the tray panel's switch. It saves the setting, so the choice survives a
+// restart, and switches the running service too: after its hotkey turned it
+// on over a saved "off", saving "off" changes nothing in the config.
+func (s *server) setContinuous(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := *s.cfg
+	next.Voice.Continuous.Enabled = in.Enabled
+	resp, err := s.applyLocked(&next)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	voice.SetContinuous(in.Enabled)
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // commitLocked saves next, hands it to the engine and replies with the new
 // state.
 func (s *server) commitLocked(w http.ResponseWriter, next *config.Config) {
-	if err := config.Save(next, s.opts.ConfigPath); err != nil {
-		writeError(w, http.StatusInternalServerError, "保存失败: "+err.Error())
+	resp, err := s.applyLocked(next)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// applyLocked saves next and hands it to the engine, returning the reply.
+func (s *server) applyLocked(next *config.Config) (map[string]any, error) {
+	if err := config.Save(next, s.opts.ConfigPath); err != nil {
+		return nil, errors.New("保存失败: " + err.Error())
 	}
 	s.cfg = next
 	s.stopResumeLocked()
@@ -341,7 +380,7 @@ func (s *server) commitLocked(w http.ResponseWriter, next *config.Config) {
 			resp["warning"] = "已保存，但热键注册失败: " + err.Error()
 		}
 	}
-	writeJSON(w, http.StatusOK, resp)
+	return resp, nil
 }
 
 // applySettings returns a copy of cur with the page's values, or a

@@ -1,14 +1,18 @@
 "use strict";
 
-// The tray panel: live status, the latest transcript, usage statistics, a
-// switch for voice input and a read-only summary of the other saved
-// settings. Editing happens in the settings window, which 打开设置 brings
-// forward.
+// The tray panel: live status, the latest transcript, usage statistics,
+// switches for voice input and continuous transcription, and a read-only
+// summary of the other saved settings. Editing happens in the settings
+// window, which 打开设置 brings forward.
 
 const MODE_LABELS = { toggle: "切换", hold: "按住" };
 const OUTPUT_LABELS = { paste: "自动上屏", clipboard: "复制到剪贴板", none: "不输出" };
 
 let state = null;
+// The continuous switch shows the running state, which its hotkey can flip
+// at any time, so every poll updates it unless a click is still in flight.
+let continuousOn = null;
+let continuousBusy = false;
 
 function summaryRow(label, ...value) {
   return el("div", { class: "row" }, el("span", { class: "label" }, label), el("span", { class: "value" }, ...value));
@@ -20,6 +24,12 @@ function renderSummary() {
   const toggle = el("input", { type: "checkbox", class: "switch", "aria-label": "语音输入", onchange: () => setEnabled(toggle) });
   toggle.checked = s.enabled;
   rows.push(el("label", { class: "row" }, el("span", { class: "label" }, "语音输入"), el("span", { class: "value" }, toggle)));
+  const cont = el("input", { type: "checkbox", class: "switch", id: "continuousSwitch", "aria-label": "持续转写", onchange: () => setContinuous(cont) });
+  cont.checked = continuousOn ?? s.continuousEnabled;
+  // It runs only while voice input is on.
+  cont.disabled = !s.enabled;
+  rows.push(el("label", { class: "row", title: s.enabled ? "" : "语音输入关闭时，持续转写不运行" },
+    el("span", { class: "label" }, "持续转写"), el("span", { class: "value" }, cont)));
   const hotkeys = splitHotkeys(s.pushToTalk);
   rows.push(summaryRow("热键", ...(hotkeys.length
     ? hotkeys.flatMap((h, i) => [i ? el("span", { class: "muted" }, "或") : null, keycaps(h.split("+"), state.platform)])
@@ -41,6 +51,18 @@ async function setEnabled(toggle) {
   } catch {
     toggle.checked = !toggle.checked;
   }
+  renderSummary();
+}
+
+async function setContinuous(toggle) {
+  toggle.disabled = continuousBusy = true;
+  try {
+    state = (await api("/api/continuous", { enabled: toggle.checked })).state;
+    continuousOn = toggle.checked;
+  } catch {
+    toggle.checked = !toggle.checked;
+  }
+  continuousBusy = false;
   renderSummary();
 }
 
@@ -70,6 +92,11 @@ function renderStatus({ status, stats, logs }) {
   $("statChars").textContent = stats.chars.toLocaleString();
   $("statAvg").textContent = cpm(stats.chars, stats.audioMs);
   $("statLast").textContent = cpm(stats.lastChars, stats.lastAudioMs);
+  const cont = $("continuousSwitch");
+  if (cont && !continuousBusy && status.continuousOn !== continuousOn) {
+    continuousOn = status.continuousOn;
+    cont.checked = continuousOn;
+  }
   renderLast(status, logs);
 }
 
