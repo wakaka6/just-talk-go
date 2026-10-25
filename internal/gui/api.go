@@ -345,7 +345,7 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 		return nil, err
 	}
 	continuousHotkey := strings.TrimSpace(in.ContinuousHotkey)
-	if err := settings.ValidateHotkeys(continuousHotkey); err != nil {
+	if err := settings.ValidateContinuousHotkey(continuousHotkey, pushToTalk); err != nil {
 		return nil, err
 	}
 	if !config.ValidMode(in.Mode) {

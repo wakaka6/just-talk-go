@@ -306,7 +306,7 @@ func (m *Model) save() {
 		m.restorePushToTalkField()
 		return
 	}
-	if err := settings.ValidateHotkeys(vc.Continuous.Hotkey); err != nil {
+	if err := settings.ValidateContinuousHotkey(vc.Continuous.Hotkey, vc.PushToTalk); err != nil {
 		m.logf("❌ 持续转写热键：%s", err)
 		return
 	}

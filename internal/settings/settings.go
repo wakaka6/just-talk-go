@@ -10,6 +10,7 @@ package settings
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/c/just-talk-go/config"
@@ -195,6 +196,27 @@ func ValidateHotkeys(value string) error {
 		}
 		if combo.Key.IsTextKey() && combo.Mods&hotkey.ModFn == 0 {
 			return fmt.Errorf("热键不支持普通字符键: %s，请使用 Alt+Super、F9、Alt+F8、Ctrl+Alt+Tab 等全局快捷键", combo)
+		}
+	}
+	return nil
+}
+
+// ValidateContinuousHotkey checks [voice.continuous] hotkey: the same rules as
+// a dictation hotkey, and no combo may already be one of pushToTalk's. The
+// voice plugin refuses such a config, so saving it would leave Just Talk
+// unable to start its hotkeys next time. The error text is user-facing.
+func ValidateContinuousHotkey(value, pushToTalk string) error {
+	if err := ValidateHotkeys(value); err != nil {
+		return err
+	}
+	combos, _ := config.ParseHotkeyList(value)
+	dictation, err := config.ParseHotkeyList(pushToTalk)
+	if err != nil {
+		return fmt.Errorf("热键格式错误: %w", err)
+	}
+	for _, combo := range combos {
+		if slices.Contains(dictation, combo) {
+			return fmt.Errorf("%s 已经是听写热键，不能再用来开关持续转写", combo)
 		}
 	}
 	return nil

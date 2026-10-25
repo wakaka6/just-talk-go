@@ -93,9 +93,12 @@ func TestSaveRejectsInvalidValuesWithoutWriting(t *testing.T) {
 	cases := map[string]func(*settingsJSON){
 		"text key hotkey": func(s *settingsJSON) { s.PushToTalk = "Ctrl+A" },
 		"fn function key": func(s *settingsJSON) { s.PushToTalk = "Fn+F5" },
-		"unknown mode":    func(s *settingsJSON) { s.Mode = "" },
-		"unknown output":  func(s *settingsJSON) { s.TextOutput = "whatever" },
-		"negative delay":  func(s *settingsJSON) { s.StopDelayMs = -1 },
+		"continuous hotkey is a dictation hotkey": func(s *settingsJSON) {
+			s.PushToTalk, s.ContinuousHotkey = "Fn, F13", "f13"
+		},
+		"unknown mode":   func(s *settingsJSON) { s.Mode = "" },
+		"unknown output": func(s *settingsJSON) { s.TextOutput = "whatever" },
+		"negative delay": func(s *settingsJSON) { s.StopDelayMs = -1 },
 		"unknown position": func(s *settingsJSON) {
 			s.OverlayPosition = "middle"
 		},
