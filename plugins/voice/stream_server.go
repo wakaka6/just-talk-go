@@ -82,6 +82,13 @@ func checkLoopbackAddr(addr string) error {
 
 // streamServer serves ASR events to any number of local WebSocket
 // subscribers. It outlives sessions; broadcast never blocks.
+//
+// Subscribers are invisible to each other, and that must stay true: a
+// connection only ever carries frames from broadcast (ASR results, identical
+// for everyone), never anything addressed to one subscriber, nor how many
+// others are connected. Per-connection state stays on streamSubscriber. If
+// per-subscriber filtering or commands are ever added, they belong on that
+// struct and must be applied on that connection's write path alone.
 type streamServer struct {
 	logger *slog.Logger
 	srv    *http.Server

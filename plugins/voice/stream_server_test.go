@@ -91,6 +91,52 @@ func TestStreamServerBroadcastsToAllSubscribers(t *testing.T) {
 	}
 }
 
+// A subscriber must not be able to tell that others come and go: the stream
+// carries ASR results only, never anything about the subscriber set.
+func TestStreamServerSubscribersAreInvisibleToEachOther(t *testing.T) {
+	srv, err := newStreamServer("127.0.0.1:0", discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	dial := func() *websocket.Conn {
+		conn, _, err := websocket.Dial(ctx, "ws://"+srv.Addr()+streamPath, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return conn
+	}
+
+	first := dial()
+	defer first.CloseNow()
+	waitForSubscribers(t, srv, 1)
+	srv.broadcast(newSessionStartEvent("jt-1"))
+
+	second := dial()
+	waitForSubscribers(t, srv, 2)
+	srv.broadcast(newASREvent("jt-1", "一", nil, false))
+	second.CloseNow()
+	waitForSubscribers(t, srv, 1)
+	srv.broadcast(newASREvent("jt-1", "二", nil, true))
+
+	// The joining and the leaving of the second subscriber inserted nothing:
+	// the next frames are exactly what was broadcast.
+	var start streamSessionEvent
+	readJSON(t, ctx, first, &start)
+	if start != newSessionStartEvent("jt-1") {
+		t.Fatalf("first frame = %+v", start)
+	}
+	for _, want := range []string{"一", "二"} {
+		var asr streamASREvent
+		readJSON(t, ctx, first, &asr)
+		if asr.Type != "asr" || asr.Text != want {
+			t.Fatalf("frame = %+v, want asr %q", asr, want)
+		}
+	}
+}
+
 func TestStreamServerSlowSubscriberDoesNotBlock(t *testing.T) {
 	srv, err := newStreamServer("127.0.0.1:0", discardLogger())
 	if err != nil {
