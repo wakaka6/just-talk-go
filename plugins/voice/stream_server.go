@@ -211,10 +211,15 @@ func (s *streamServer) setSnapshot(fn func() any) {
 
 // clearStaleSocket removes a socket file left behind by a crash. A socket
 // something is still listening on is left alone, so a second instance fails
-// loudly instead of stealing the address.
+// loudly instead of stealing the address. Anything that is not a socket is
+// never removed: a mistyped stream_addr must not cost the file it names.
 func clearStaleSocket(path string) error {
-	if _, err := os.Stat(path); err != nil {
+	info, err := os.Lstat(path)
+	if err != nil {
 		return nil
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("%s 已存在且不是 socket，不会删除它；请给 stream_addr 换一个路径", path)
 	}
 	conn, err := net.DialTimeout("unix", path, time.Second)
 	if err == nil {

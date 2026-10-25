@@ -216,6 +216,48 @@ func TestStreamServerOnUnixSocket(t *testing.T) {
 	}
 }
 
+// A mistyped stream_addr must never cost the user the file it names.
+func TestStreamServerKeepsAFileThatIsNotASocket(t *testing.T) {
+	path := filepath.Join(shortTempDir(t), "notes.txt")
+	if err := os.WriteFile(path, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if srv, err := newStreamServer("unix:"+path, discardLogger()); err == nil {
+		srv.Close()
+		t.Fatal("listened on a path that holds a regular file")
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "keep me" {
+		t.Fatalf("the file was touched: %q, %v", data, err)
+	}
+}
+
+// A socket left behind by a crash nobody listens on is cleared, not an error.
+func TestStreamServerReplacesAStaleSocket(t *testing.T) {
+	path := filepath.Join(shortTempDir(t), "asr.sock")
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.(*net.UnixListener).SetUnlinkOnClose(false)
+	ln.Close()
+	srv, err := newStreamServer("unix:"+path, discardLogger())
+	if err != nil {
+		t.Fatalf("a stale socket blocked the server: %v", err)
+	}
+	srv.Close()
+}
+
+// shortTempDir keeps socket paths under the ~104-byte sun_path limit, which
+// t.TempDir() overruns on macOS for longer test names.
+func shortTempDir(t *testing.T) string {
+	dir, err := os.MkdirTemp("", "jt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
 func TestCheckStreamAddrAcceptsBothKinds(t *testing.T) {
 	for _, addr := range []string{"127.0.0.1:7590", "localhost:0", "unix:/tmp/jt.sock", "unix:~/jt.sock"} {
 		if err := CheckStreamAddr(addr); err != nil {
