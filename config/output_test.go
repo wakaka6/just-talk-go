@@ -52,7 +52,7 @@ func TestSaveDropsAutoSubmit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(cfg); err != nil {
+	if err := Save(cfg, ""); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := os.ReadFile("config.toml")

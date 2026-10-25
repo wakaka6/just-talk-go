@@ -34,6 +34,10 @@ var assetsFS embed.FS
 // Options configures the page handler.
 type Options struct {
 	Config *config.Config
+	// ConfigPath is the file this instance was started with. Empty falls back
+	// to the usual lookup; set, it keeps a -config instance from saving over
+	// someone else's config.
+	ConfigPath string
 	// Apply hands a saved config to the running engine.
 	Apply    func(*config.Config) error
 	Provider hotkey.ProviderInfo
@@ -89,18 +93,21 @@ func Handler(opts Options) http.Handler {
 }
 
 type settingsJSON struct {
-	Enabled         bool     `json:"enabled"`
-	PushToTalk      string   `json:"pushToTalk"`
-	Mode            string   `json:"mode"`
-	Device          string   `json:"device"`
-	Language        string   `json:"language"`
-	TextOutput      string   `json:"textOutput"`
-	StopDelayMs     int      `json:"stopDelayMs"`
-	Hotwords        []string `json:"hotwords"`
-	HotwordsFile    string   `json:"hotwordsFile"`
-	StreamAddr      string   `json:"streamAddr"`
-	OverlayPosition string   `json:"overlayPosition"`
-	Engine          string   `json:"engine"`
+	Enabled      bool     `json:"enabled"`
+	PushToTalk   string   `json:"pushToTalk"`
+	Mode         string   `json:"mode"`
+	Device       string   `json:"device"`
+	Language     string   `json:"language"`
+	TextOutput   string   `json:"textOutput"`
+	StopDelayMs  int      `json:"stopDelayMs"`
+	Hotwords     []string `json:"hotwords"`
+	HotwordsFile string   `json:"hotwordsFile"`
+	StreamAddr   string   `json:"streamAddr"`
+	// Continuous* is the transcription service that runs alongside dictation.
+	ContinuousEnabled bool   `json:"continuousEnabled"`
+	ContinuousDevice  string `json:"continuousDevice"`
+	OverlayPosition   string `json:"overlayPosition"`
+	Engine            string `json:"engine"`
 	// EngineConfigs carries only the engines whose fields the page edited.
 	EngineConfigs map[string]map[string]string `json:"engineConfigs,omitempty"`
 }
@@ -150,10 +157,7 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 	if s.opts.OpenURL != nil {
 		shell = "app"
 	}
-	path := config.FindConfig()
-	if path == "" {
-		path = config.DefaultPath()
-	}
+	path := config.SavePath(s.opts.ConfigPath)
 	st := stateJSON{
 		Platform:   runtime.GOOS,
 		Shell:      shell,
@@ -161,18 +165,20 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 		Debug:      s.opts.Debug,
 		ConfigPath: path,
 		Settings: settingsJSON{
-			Enabled:         vc.Enabled,
-			PushToTalk:      canonicalHotkeys(vc.PushToTalk),
-			Mode:            vc.Mode,
-			Device:          vc.Device,
-			Language:        vc.Language,
-			TextOutput:      vc.TextOutput,
-			StopDelayMs:     vc.StopDelayMs,
-			Hotwords:        append([]string{}, vc.Hotwords...),
-			HotwordsFile:    vc.HotwordsFile,
-			StreamAddr:      vc.StreamAddr,
-			OverlayPosition: cfg.Overlay.Position,
-			Engine:          settings.CurrentEngine(vc),
+			Enabled:           vc.Enabled,
+			PushToTalk:        canonicalHotkeys(vc.PushToTalk),
+			Mode:              vc.Mode,
+			Device:            vc.Device,
+			Language:          vc.Language,
+			TextOutput:        vc.TextOutput,
+			StopDelayMs:       vc.StopDelayMs,
+			Hotwords:          append([]string{}, vc.Hotwords...),
+			HotwordsFile:      vc.HotwordsFile,
+			StreamAddr:        vc.StreamAddr,
+			ContinuousEnabled: vc.Continuous.Enabled,
+			ContinuousDevice:  vc.Continuous.Device,
+			OverlayPosition:   cfg.Overlay.Position,
+			Engine:            settings.CurrentEngine(vc),
 		},
 		OverlayPositions: settings.OverlayPositionOptions(cfg.Overlay.Position),
 		Languages:        settings.LanguageOptions(vc.Language),
@@ -313,7 +319,7 @@ func (s *server) setEnabled(w http.ResponseWriter, r *http.Request) {
 // commitLocked saves next, hands it to the engine and replies with the new
 // state.
 func (s *server) commitLocked(w http.ResponseWriter, next *config.Config) {
-	if err := config.Save(next); err != nil {
+	if err := config.Save(next, s.opts.ConfigPath); err != nil {
 		writeError(w, http.StatusInternalServerError, "保存失败: "+err.Error())
 		return
 	}
@@ -373,6 +379,8 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	vc.TextOutput = in.TextOutput
 	vc.HotwordsFile = strings.TrimSpace(in.HotwordsFile)
 	vc.StreamAddr = strings.TrimSpace(in.StreamAddr)
+	vc.Continuous.Enabled = in.ContinuousEnabled
+	vc.Continuous.Device = strings.TrimSpace(in.ContinuousDevice)
 	vc.StopDelayMs = in.StopDelayMs
 	vc.Engine = engine
 	next.Overlay.Position = in.OverlayPosition

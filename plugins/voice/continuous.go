@@ -12,16 +12,16 @@ import (
 	"github.com/c/just-talk-go/internal/speech"
 )
 
-// modeContinuous transcribes without hotkeys: the speech gate opens a session
-// when someone starts talking and closes it when they stop.
+// Continuous transcription runs alongside dictation, not instead of it: the
+// speech gate opens a session when someone starts talking into the external
+// source and closes it when they stop, while the hotkeys keep dictating into
+// whatever the user is typing in.
 //
 // The audio here is an external source — a meeting, system output, a room —
 // not the user talking to their own machine. Nobody asked for this text, so
-// there is no key to press and no destination to paste into: results only go
-// to the log, the overlay and stream subscribers. That is what the mode is
-// for, not a limitation of it.
-const modeContinuous = config.ModeContinuous
-
+// there is no key to press and no destination to paste into: results go to
+// the log, the overlay and stream subscribers. That is what this path is for,
+// not a limitation of it, which is also why it has its own recording device.
 const (
 	continuousBackoffMin = 500 * time.Millisecond
 	continuousBackoffMax = 5 * time.Second
@@ -48,8 +48,8 @@ func (p *VoicePlugin) syncContinuous() {
 	p.mu.Lock()
 	ctx := p.runCtx
 	vc := p.cfg.Voice
-	want := ctx != nil && vc.Enabled && p.mode == modeContinuous
-	if want && p.contCancel != nil && reflect.DeepEqual(p.contCfg, vc) {
+	want := ctx != nil && vc.Enabled && vc.Continuous.Enabled
+	if want && p.contCancel != nil && reflect.DeepEqual(p.contCfg, continuousKey(vc)) {
 		p.mu.Unlock()
 		return
 	}
@@ -59,7 +59,7 @@ func (p *VoicePlugin) syncContinuous() {
 	if want {
 		loopCtx, cancel := context.WithCancel(ctx)
 		done := make(chan struct{})
-		p.contCancel, p.contDone, p.contCfg = cancel, done, vc
+		p.contCancel, p.contDone, p.contCfg = cancel, done, continuousKey(vc)
 		start = func() {
 			go func() {
 				defer close(done)
@@ -85,13 +85,13 @@ func (p *VoicePlugin) syncContinuous() {
 // runContinuous keeps one recorder open across ASR reconnects until ctx is
 // cancelled; the recorder is reopened only if capture itself fails.
 func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) {
-	p.logger.Info("continuous: started", "device", vc.Device)
-	pout("🎧 持续转写已启动")
+	p.logger.Info("continuous: started", "device", vc.Continuous.Device)
+	pout("\U0001f3a7 持续转写已启动")
 	backoff := continuousBackoffMin
 	for ctx.Err() == nil {
 		var rec *Recorder
-		if vc.Device != "" {
-			rec = NewRecorderWithDevice(p.logger, vc.Device, vc.Gain)
+		if vc.Continuous.Device != "" {
+			rec = NewRecorderWithDevice(p.logger, vc.Continuous.Device, vc.Gain)
 		} else {
 			rec = NewRecorder(p.logger, vc.Gain)
 		}
@@ -106,11 +106,11 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 			continue
 		}
 		backoff = continuousBackoffMin
-		pout("🎤 开始持续录音 (后端: %s)", rec.Backend())
-		activeRecorder.Store(rec)
+		pout("\U0001f3a4 开始持续录音 (后端: %s)", rec.Backend())
+		continuousRecorder.Store(rec)
 
 		recCtx, recCancel := context.WithCancel(ctx)
-		gate := newSpeechGate(vc.SilenceGate, p.logger)
+		gate := newSpeechGate(vc.Continuous.SilenceGate, p.logger)
 		pumpDone := make(chan struct{})
 		go func() {
 			defer close(pumpDone)
@@ -121,7 +121,7 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 		recCancel()
 		_, _ = rec.Stop()
 		<-pumpDone
-		activeRecorder.CompareAndSwap(rec, nil)
+		continuousRecorder.CompareAndSwap(rec, nil)
 		if ctx.Err() == nil {
 			pout("⚠️  录音中断，正在重新打开")
 			if !sleepContext(ctx, backoff) {
@@ -130,7 +130,11 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 			backoff = nextContinuousBackoff(backoff)
 		}
 	}
-	p.publishContinuousStatus("idle", "持续转写已停止")
+	p.mu.Lock()
+	// The service is gone: hand the status line back to dictation.
+	p.contState, p.contDetail = "", ""
+	p.publishStatusLocked()
+	p.mu.Unlock()
 	pout("🎧 持续转写已停止")
 	p.logger.Info("continuous: stopped")
 }
@@ -193,8 +197,10 @@ func (p *VoicePlugin) runContinuousSession(ctx context.Context, vc config.VoiceC
 	p.sessionID++
 	sessionID := p.sessionID
 	p.mu.Unlock()
-	resetOverlaySession(sessionID)
 	p.publishContinuousStatus("connecting", "持续转写：正在连接 ASR")
+	if !p.dictationBusy() {
+		resetOverlaySession(sessionID)
+	}
 
 	eng, err := asrcfg.Build(vc)
 	if err != nil {
@@ -273,7 +279,7 @@ func (p *VoicePlugin) consumeContinuousResults(ctx context.Context, sessionID ui
 				return result.Error
 			}
 			p.publishASRResult(sessionID, client, result)
-			if result.Text != "" {
+			if result.Text != "" && !p.dictationBusy() {
 				setOverlayPartial(sessionID, result.Text)
 			}
 			printed = printUtterances(result.Utterances, printed)
@@ -363,11 +369,38 @@ func (p *VoicePlugin) closeStreamSession(client speech.StreamSession) {
 	}
 }
 
+// publishContinuousStatus records what the service is doing and shows it only
+// while dictation is idle: the user pressing a key outranks the room.
 func (p *VoicePlugin) publishContinuousStatus(state, detail string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.contState, p.contDetail = state, detail
+	if p.dictationBusyLocked() {
+		return
+	}
 	// Status only: the hotkey state machine (and its Esc/R hotkeys) stays idle.
 	p.publishStatusSnapshotLocked(state, detail, state == "recording", false, time.Time{}, p.sessionID)
+}
+
+// dictationBusyLocked reports whether the hotkey side owns the status line and
+// the overlay.
+func (p *VoicePlugin) dictationBusyLocked() bool {
+	return p.recording || p.stopping || p.pendingDone > 0
+}
+
+func (p *VoicePlugin) dictationBusy() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.dictationBusyLocked()
+}
+
+// continuousKey drops the settings that belong to dictation, so editing a
+// hotkey or the paste destination does not interrupt a transcription that is
+// running alongside it.
+func continuousKey(vc config.VoiceConfig) config.VoiceConfig {
+	vc.Mode, vc.PushToTalk, vc.TextOutput, vc.Device = "", "", "", ""
+	vc.StopDelayMs = 0
+	return vc
 }
 
 func nextContinuousBackoff(d time.Duration) time.Duration {

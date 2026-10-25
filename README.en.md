@@ -211,7 +211,7 @@ Recommended config:
 ```toml
 [voice]
 enabled = true
-mode = "toggle"                    # toggle | hold | continuous (see below)
+mode = "toggle"                    # how a hotkey starts and ends one dictation: toggle | hold
 push_to_talk = "Alt+Super"
 language = "zh-CN"
 text_output = "paste"              # where recognized text goes: paste | clipboard | none
@@ -223,7 +223,11 @@ app_key = "your-app-key"
 access_key = "your-access-key"
 resource_id = "volc.bigasr.sauc.duration"
 hotwords = ["Wayland", "Sway", "wl-copy", "wtype", "just-talk-go"]
-silence_gate = true                # continuous mode only: cut on speech, upload no silence (see below)
+
+[voice.continuous]                 # the transcription service, alongside dictation (see below)
+enabled = false
+device = ""                        # the external source's device (usually a loopback one)
+silence_gate = true                # cut on speech, upload no silence
 
 # Engine: doubao-stream (default, Doubao streaming) / dashscope (Qwen Fun-ASR streaming)
 #         openai / auralwise / mimo-asr (batch transcription, no live captions)
@@ -270,29 +274,38 @@ A device named in the config but not connected right now stays in the list marke
 
 This is **Just Talk's own business**: whether text is pasted into the focused field or copied has nothing to do with offering transcription to other programs. A subscriber is not affected by this setting and the frames do not carry it — a subscriber never has to think about pasting.
 
-Continuous mode is not on that axis at all: it transcribes an **external source** — a meeting, system output, a room full of people — not you talking to your own machine. Nobody asked for those words to be typed out, so the mode registers no hotkey and outputs no text. That is what the mode is, not a limit on it.
+Continuous transcription is not on that axis at all: it transcribes an **external source** — a meeting, system output, a room full of people — not you talking to your own machine. Nobody asked for those words to be typed out, so that path outputs no text and `text_output` does not apply to it. That is what it is, not a limit on it.
 
-So the settings ask for the **way of working** first (dictation or continuous transcription) instead of offering three values in one "mode" picker. Pick continuous transcription and the whole "hotkeys" group (the hotkey, toggle/hold, the stop delay) and "where recognized text goes" simply disappear from the settings window — not greyed out with an apology: those settings do not exist in that way of working. The TUI is a flat list of fields and cannot drop them, so it marks those two as not applicable instead.
+The two run **in parallel**, not one instead of the other: listening to an external source does not stop you from dictating with a hotkey at the same time. So they are two groups in the settings — "hotkeys" configures dictation, and "continuous transcription" is a switch plus its own external-source device, rather than a third value in one picker.
 
 **An external word list**: hotwords make recognition fit the words actually being said, but a list inside the config is frozen. `hotwords_file` points at a text file (one word per line, `#` starts a comment, `~` is expanded) whose words are merged with `hotwords`. The list reaches the engine when a session opens, so: in the hotkey modes the next press picks it up; in continuous mode with the silence gate on every utterance is a new session, so the file is reread for each one and an edit applies to the next sentence; with the gate off a session can stay up for tens of minutes, so Just Talk checks the file every 2 seconds and **reconnects once after an edit** to apply it. No config change, no restart. An unreadable file is a warning: recognition continues with `hotwords`.
 
-**Continuous transcription**: `mode = "continuous"` is for transcribing a meeting or other system audio. This mode has no finger on a key: in the hotkey modes a person decides where a sentence starts and ends, and here the **silence gate** (`silence_gate`, on by default) does that job. Speech opens an ASR session; about 1.2 seconds of silence closes it (the final packet is flagged `last`, which asks the engine for its final result). So nothing is sent to the cloud while no one is talking and no session sits idle; the 0.6 seconds of audio captured before the gate opened are sent along, so a sentence never loses its first syllable.
+**Continuous transcription**: `[voice.continuous] enabled = true` is for transcribing a meeting or other system audio. It runs **alongside** dictation rather than instead of it: while you hold a hotkey and talk into your microphone, it keeps handing the external source to subscribers in the background. Each path has its own recording device (`[voice] device` is the microphone, `[voice.continuous] device` is usually a loopback one) and its own sessions.
+
+This path has no finger on a key: in dictation a person decides where a sentence starts and ends, and here the **silence gate** (`silence_gate`, on by default) does that job. Speech opens an ASR session; about 1.2 seconds of silence closes it (the final packet is flagged `last`, which asks the engine for its final result). So nothing is sent to the cloud while no one is talking and no session sits idle; the 0.6 seconds of audio captured before the gate opened are sent along, so a sentence never loses its first syllable.
+
+An old `mode = "continuous"` migrates on load: `[voice.continuous] enabled = true`, the `device` moves to that path, and **the hotkey is cleared** — that config registered no hotkey, so inventing a dictation that types into the focused window would be the surprise. No hotkey means no dictation, which is how a transcription-only instance is configured.
 
 Set `silence_gate = false` for the older behaviour: one long session that reconnects whenever it ends for any reason (server end, error, network drop) with a backoff from 0.5s capped at 5s, the recording device staying open across reconnects, and up to the last 5 seconds of audio replayed into the new session — at the price of uploading silence, and of a sentence that straddles a reconnect being recognised twice.
 
-This mode registers no hotkeys and **never** types, pastes or touches the clipboard; results go only to the log, the overlay and the WebSocket subscription below. It needs a streaming engine (e.g. `doubao-stream`, `dashscope`). On macOS, pair it with a loopback device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole): set the meeting app's speaker output to BlackHole and record from it:
+This path **never** types, pastes or touches the clipboard; results go only to the log, the overlay and the WebSocket subscription below. It needs a streaming engine (e.g. `doubao-stream`, `dashscope`). On macOS, pair it with a loopback device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole): set the meeting app's speaker output to BlackHole and record from it:
 
 ```toml
 [voice]
-mode = "continuous"
-device = "BlackHole 2ch"
+push_to_talk = ""                  # service only: no hotkey means no dictation
 stream_addr = "127.0.0.1:7590"
+
+[voice.continuous]
+enabled = true
+device = "BlackHole 2ch"
 
 [overlay]
 enabled = false                    # turn the overlay off if you don't want the notch indicator
 ```
 
-**Recognition result subscription**: with `stream_addr` set (editable in the settings window and the TUI, both of which show the listening address and how many subscribers are connected), Just Talk serves a WebSocket at `ws://<stream_addr>/asr` in every recording mode. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is rejected when you save. Browser connections from other origins are rejected. A config reload restarts the server only when the address changes.
+**Recognition result subscription**: with `stream_addr` set (editable in the settings window and the TUI, both of which show the listening address and how many subscribers are connected), Just Talk serves a WebSocket at `ws://<stream_addr>/asr`. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is rejected when you save. Browser connections from other origins are rejected. A config reload restarts the server only when the address changes.
+
+**Only continuous transcription is published. Your own dictation is not**: dictation is Just Talk typing for you and `text_output` decides where it lands; the subscription is the transcription capability offered to other programs, and it carries the external source. That line matters most when both run in parallel: pressing a hotkey never sends your own words to a subscriber.
 
 **Any number of subscribers, none of them aware of the others**: this is one shared stream of ASR results. No frame is addressed to a particular subscriber and no frame reveals how many others are connected (that count only appears in the settings UI). Each connection has its own buffer, and one that falls behind is disconnected on its own — without slowing down the others or recognition. Subscribers cannot even send anything (inbound frames are read and discarded, only to notice a disconnect). So “filter client-side” means “I only care about the definite sentences”, not “sort someone else’s mail”.
 

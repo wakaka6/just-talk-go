@@ -11,11 +11,6 @@ let draft = null;
 let edits = {};
 let saving = false;
 
-// config.ModeContinuous: the one mode that is not dictation at all.
-const CONTINUOUS = "continuous";
-// Which dictation mode to come back to after a trip through 持续转写.
-let lastDictationMode = "toggle";
-
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 const POSITION_LABELS = {
@@ -71,6 +66,7 @@ function applyState(state) {
   $("configPath").textContent = state.configPath;
   $("configPath").title = state.configPath;
   form.elements.enabled.checked = draft.enabled;
+  form.elements.continuousEnabled.checked = draft.continuousEnabled;
   for (const name of ["pushToTalk", "stopDelayMs", "hotwordsFile", "streamAddr"]) form.elements[name].value = draft[name];
   $("textOutput").replaceChildren(...state.textOutputs.map((o) => el("option", { value: o }, OUTPUT_LABELS[o] || o)));
   $("textOutput").value = draft.textOutput;
@@ -84,8 +80,6 @@ function applyState(state) {
   renderSlots();
   renderDevices();
   renderHotwords();
-  if (draft.mode !== CONTINUOUS) lastDictationMode = draft.mode;
-  renderRoles();
   renderModes();
   renderEngines();
   updateDirty();
@@ -276,9 +270,11 @@ const DEVICE_GROUPS = [
   ["unknown", "其他"],
 ];
 
-function renderDevices() {
+// Dictation and the transcription service each pick their own device, so the
+// same list is rendered into both selects.
+function deviceOptions(value) {
   const devices = saved.devices || [];
-  const current = /^default$/i.test(draft.device) ? "" : draft.device;
+  const current = /^default$/i.test(value) ? "" : value;
   const options = [el("option", { value: "" }, "系统默认输入")];
   for (const [kind, label] of DEVICE_GROUPS) {
     const items = devices.filter((d) => d.kind === kind);
@@ -291,8 +287,16 @@ function renderDevices() {
   if (current && !devices.some((d) => d.name === current)) {
     options.push(el("option", { value: current }, `${current}（未检测到）`));
   }
-  $("device").replaceChildren(...options);
-  $("device").value = current;
+  return { options, current };
+}
+
+function renderDevices() {
+  const devices = saved.devices || [];
+  for (const [id, value] of [["device", draft.device], ["continuousDevice", draft.continuousDevice]]) {
+    const { options, current } = deviceOptions(value);
+    $(id).replaceChildren(...options);
+    $(id).value = current;
+  }
 
   const hint = saved.platform === "darwin" && !devices.some((d) => d.kind === "loopback")
     ? "没有回环设备：macOS 不能直接录本机声音，需装 BlackHole 等虚拟声卡，并把要录的应用的播放输出指向它。"
@@ -303,39 +307,13 @@ function renderDevices() {
   $("deviceError").hidden = !saved.devicesError;
 }
 
-// 听写是你对着电脑说，持续转写转的是外部音源——两件事，不是同一个选择器里的
-// 三个值。热键、模式、输出去向都只属于听写，所以换成持续转写时它们直接
-// 不在这个界面上，而不是“在、但不生效”。
-function renderRoles() {
-  const service = draft.mode === CONTINUOUS;
-  $("roles").replaceChildren(...[["听写", false], ["持续转写", true]].map(([label, wants]) => el("button", {
-    type: "button",
-    role: "radio",
-    "aria-checked": String(wants === service),
-    onclick: () => setRole(wants),
-  }, label)));
-  $("hotkeyGroupTitle").hidden = service;
-  $("hotkeyGroup").hidden = service;
-  $("textOutputRow").hidden = service;
-}
-
-function setRole(service) {
-  const next = service ? CONTINUOUS : lastDictationMode;
-  if (next === draft.mode) return;
-  if (draft.mode !== CONTINUOUS) lastDictationMode = draft.mode;
-  draft.mode = next;
-  renderRoles();
-  renderModes();
-  updateDirty();
-}
-
 function renderModes() {
   const labels = { toggle: "切换", hold: "按住" };
-  $("modes").replaceChildren(...saved.modes.filter((m) => m !== CONTINUOUS).map((m) => el("button", {
+  $("modes").replaceChildren(...saved.modes.map((m) => el("button", {
     type: "button",
     role: "radio",
     "aria-checked": String(draft.mode === m),
-    onclick: () => { draft.mode = m; lastDictationMode = m; renderModes(); updateDirty(); },
+    onclick: () => { draft.mode = m; renderModes(); updateDirty(); },
   }, labels[m] || m)));
 }
 
@@ -547,6 +525,8 @@ function readForm() {
   draft.enabled = form.elements.enabled.checked;
   draft.pushToTalk = form.elements.pushToTalk.value;
   draft.device = form.elements.device.value;
+  draft.continuousEnabled = form.elements.continuousEnabled.checked;
+  draft.continuousDevice = form.elements.continuousDevice.value;
   draft.textOutput = form.elements.textOutput.value;
   draft.hotwordsFile = form.elements.hotwordsFile.value.trim();
   draft.streamAddr = form.elements.streamAddr.value.trim();

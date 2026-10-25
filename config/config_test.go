@@ -78,6 +78,9 @@ func TestParseHotkeyList(t *testing.T) {
 		{input: " Fn , ,F13, ", want: []hotkey.Combo{fn, f13}},
 		{input: "Fn, Menu", want: []hotkey.Combo{fn, {Key: hotkey.KeyMenu}}},
 		{input: "Apps, application, menu", want: []hotkey.Combo{{Key: hotkey.KeyMenu}}},
+		// No hotkey at all: a transcription-only instance has nothing to press.
+		{input: "", want: nil},
+		{input: " , ", want: nil},
 	} {
 		got, err := ParseHotkeyList(test.input)
 		if err != nil {
@@ -87,7 +90,7 @@ func TestParseHotkeyList(t *testing.T) {
 			t.Fatalf("ParseHotkeyList(%q) = %v, want %v", test.input, got, test.want)
 		}
 	}
-	for _, input := range []string{"", " , ", "Fn, Bogus"} {
+	for _, input := range []string{"Fn, Bogus"} {
 		if _, err := ParseHotkeyList(input); err == nil {
 			t.Fatalf("ParseHotkeyList(%q) succeeded, want error", input)
 		}

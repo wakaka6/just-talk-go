@@ -15,7 +15,7 @@ func TestSavePassesNewCredentialsToReload(t *testing.T) {
 	}
 	original := config.Default()
 	original.Voice.AccessKey = "old-token"
-	model := New(original)
+	model := New(original, "")
 	// Credentials now live under voice.engine_configs[doubao-stream]; the TUI
 	// edits them through the engine-config modal.
 	model.openEngineConfig()
@@ -69,7 +69,7 @@ func loadTestConfig(t *testing.T, content string) *config.Config {
 }
 
 func TestOverlayPositionEditPersistsAcrossReload(t *testing.T) {
-	model := New(loadTestConfig(t, "[overlay]\nposition = \"top-left\"\n"))
+	model := New(loadTestConfig(t, "[overlay]\nposition = \"top-left\"\n"), "")
 	var reloaded *config.Config
 	model.OnSave = func(cfg *config.Config) error {
 		reloaded = cfg
@@ -95,7 +95,7 @@ func TestOverlayPositionEditPersistsAcrossReload(t *testing.T) {
 	if saved.Overlay.Position != "bottom-left" {
 		t.Fatalf("saved overlay position = %q, want bottom-left", saved.Overlay.Position)
 	}
-	next := New(saved)
+	next := New(saved, "")
 	f := next.fields[overlayPositionField(t, next)]
 	if got := f.opts[f.optIdx]; got != "bottom-left" {
 		t.Fatalf("reopened TUI shows overlay position %q, want bottom-left", got)
@@ -115,7 +115,7 @@ func TestSaveKeepsOverlayPosition(t *testing.T) {
 		{name: "explicit empty", content: "[overlay]\nposition = \"\"\n", want: ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			model := New(loadTestConfig(t, test.content))
+			model := New(loadTestConfig(t, test.content), "")
 			f := model.fields[overlayPositionField(t, model)]
 			if got := f.opts[f.optIdx]; got != test.want {
 				t.Fatalf("TUI shows overlay position %q, want %q", got, test.want)

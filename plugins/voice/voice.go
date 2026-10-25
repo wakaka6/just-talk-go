@@ -332,6 +332,10 @@ type VoicePlugin struct {
 	contCancel context.CancelFunc
 	contDone   chan struct{}
 	contCfg    config.VoiceConfig
+	// contState and contDetail are what the transcription service is doing.
+	// It shares one status line with dictation, which outranks it.
+	contState  string
+	contDetail string
 }
 
 type recordingSession struct {
@@ -418,19 +422,13 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	if mode == "" {
 		mode = config.ModeHold
 	}
-	// Continuous mode registers no voice hotkeys: nothing may start a
-	// session that pastes text.
-	var combos []hotkey.Combo
-	if mode != modeContinuous {
-		var err error
-		combos, err = config.ParseHotkeyList(vc.PushToTalk)
-		if err != nil {
-			return fmt.Errorf("parse hotkey %q: %w", vc.PushToTalk, err)
-		}
-		for _, c := range combos {
-			if err := validateVoiceHotkey(c); err != nil {
-				return err
-			}
+	combos, err := config.ParseHotkeyList(vc.PushToTalk)
+	if err != nil {
+		return fmt.Errorf("parse hotkey %q: %w", vc.PushToTalk, err)
+	}
+	for _, c := range combos {
+		if err := validateVoiceHotkey(c); err != nil {
+			return err
 		}
 	}
 
@@ -480,10 +478,6 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 		}
 		registered = append(registered, c)
 		p.logger.Info("hotkey_registered", "combo", c, "suppress", opts.Suppress)
-	}
-	if modeChanged && mode == modeContinuous {
-		// A hotkey session left running would never be stopped now.
-		p.cancelRecording()
 	}
 	p.syncContinuous()
 	return nil
@@ -743,25 +737,21 @@ func (p *VoicePlugin) connectASR(ctx context.Context, cancel context.CancelFunc,
 	p.audioDone = audioDone
 	p.publishStatusLocked()
 	p.mu.Unlock()
-	p.publishSessionStart(sessionID)
+	// Dictation never reaches stream subscribers. It is Just Talk typing for
+	// you; the subscription carries the transcription service's external
+	// audio, and mixing your own answers into it would be a surprise to every
+	// subscriber.
 
 	go func() {
 		defer close(audioDone)
 		p.streamAudio(ctx, rec, client)
 	}()
 	go func() {
-		reason := sessionEndClosed
-		defer func() { p.publishSessionEnd(sessionID, reason) }()
 		for result := range client.Results() {
 			if result.Error != nil {
-				reason = sessionEndError
 				pout("❌ ASR 错误: %v", result.Error)
 				continue
 			}
-			if result.Last {
-				reason = sessionEndLast
-			}
-			p.publishASRResult(sessionID, client, result)
 			if result.Text != "" {
 				setOverlayPartial(sessionID, result.Text)
 			}
@@ -1040,10 +1030,6 @@ func (p *VoicePlugin) claimSessionOutput(sessionID uint64) bool {
 
 func (p *VoicePlugin) publishStatusLocked() {
 	state, detail := "idle", "等待热键"
-	if p.mode == modeContinuous {
-		// This mode has no hotkey to wait for; the speech gate starts a session.
-		detail = "持续转写：等待说话"
-	}
 	stopAt := time.Time{}
 	recording, stopping := p.recording, false
 
@@ -1061,6 +1047,12 @@ func (p *VoicePlugin) publishStatusLocked() {
 		stopping = true
 	case p.lastError != "" && time.Now().Before(p.errorUntil):
 		state, detail = "error", p.lastError
+	}
+	if state == "idle" && p.contState != "" {
+		// Nothing is being dictated, so the status line shows what the
+		// transcription service is doing instead of a hotkey that just waits.
+		state, detail = p.contState, p.contDetail
+		recording = state == "recording"
 	}
 
 	p.publishStatusSnapshotLocked(state, detail, recording, stopping, stopAt, p.sessionID)

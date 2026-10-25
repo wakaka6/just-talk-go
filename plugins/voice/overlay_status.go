@@ -33,7 +33,10 @@ var (
 	overlayPartial   string
 	overlayPending   int
 	overlayOutput    VoiceOutput
-	activeRecorder   atomic.Pointer[Recorder]
+	// activeRecorder is dictation's; continuousRecorder is the transcription
+	// service's. Both can be open at once, and the meter follows dictation.
+	activeRecorder     atomic.Pointer[Recorder]
+	continuousRecorder atomic.Pointer[Recorder]
 	// overlayUpdates wakes the overlay as soon as state, partial text or
 	// output changes, so it does not wait for its next poll tick.
 	overlayUpdates = make(chan struct{}, 1)
@@ -52,7 +55,11 @@ func notifyOverlay() {
 
 func OverlayStatus() OverlayVoiceStatus {
 	var level float64
-	if rec := activeRecorder.Load(); rec != nil {
+	rec := activeRecorder.Load()
+	if rec == nil {
+		rec = continuousRecorder.Load()
+	}
+	if rec != nil {
 		level = rec.Level()
 	}
 	overlayMu.Lock()

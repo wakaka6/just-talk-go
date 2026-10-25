@@ -59,8 +59,18 @@ type VoiceConfig struct {
 	// HotwordsFile 外部词表：一行一个词，# 开头为注释，与 Hotwords 合并。
 	// 每次会话开始时重读，所以外部程序改完文件下一句就生效。
 	HotwordsFile string `toml:"hotwords_file"`
-	// SilenceGate 只对持续转写生效：按说话声切句，静音时既不送音频也不留着会话。
-	// 默认开启；写 false 退回"一直连着、断了就重连"的老行为。
+	// Continuous 持续转写：与听写并行的另一路，转的是外部音源。
+	Continuous ContinuousConfig `toml:"continuous"`
+}
+
+// ContinuousConfig 是持续转写那一路的配置。它和听写同时跑：你按热键说话上屏的
+// 同时，它把会议等外部音源转给订阅者，互不影响——所以它有自己的录音设备。
+type ContinuousConfig struct {
+	Enabled bool `toml:"enabled"`
+	// Device 外部音源的录音设备（通常是回环设备），与听写用的麦克风无关。
+	Device string `toml:"device"`
+	// SilenceGate 按说话声切句，静音时既不送音频也不留着会话。
+	// 默认开启；写 false 退回「一直连着、断了就重连」的老行为。
 	SilenceGate bool `toml:"silence_gate"`
 }
 
@@ -79,25 +89,23 @@ func ValidTextOutput(v string) bool {
 	return v == OutputPaste || v == OutputClipboard || v == OutputNone
 }
 
-// 录音模式：一个 ASR 会话什么时候开始、什么时候结束。
+// 听写模式：热键怎么开始和结束一次听写。
 const (
 	// ModeToggle 按一下开始，再按一下结束。
 	ModeToggle = "toggle"
 	// ModeHold 按住说话，松开结束。
 	ModeHold = "hold"
-	// ModeContinuous 启动即开始，由静音门控按说话声切句。这个模式转的是外部音源
-	// （会议、系统声音），不是用户对着机器说话，所以既没有要按的键，也没有
-	// 「把这段话放到哪里」这个问题：不注册热键、不输出文本，结果只给日志、
-	// 浮层和识别结果订阅者。
-	ModeContinuous = "continuous"
+	// legacyModeContinuous 是旧配置里 mode 的第三个值。持续转写不是听写的一种
+	// 方式，而是与它并行的另一路，现在住在 [voice.continuous]。
+	legacyModeContinuous = "continuous"
 )
 
 // ModeOptions 返回界面里可选的录音模式，按展示顺序。
-func ModeOptions() []string { return []string{ModeToggle, ModeHold, ModeContinuous} }
+func ModeOptions() []string { return []string{ModeToggle, ModeHold} }
 
 // ValidMode 报告 m 是否是合法的录音模式。
 func ValidMode(m string) bool {
-	return m == ModeToggle || m == ModeHold || m == ModeContinuous
+	return m == ModeToggle || m == ModeHold
 }
 
 // ExpandPath 把开头的 ~ 换成 home；路径是用户手填的，写 ~ 很自然。
@@ -150,7 +158,7 @@ func Default() *Config {
 		Voice: VoiceConfig{
 			Enabled: true, Mode: ModeToggle, PushToTalk: "Alt+Super",
 			Language: "zh-CN", TextOutput: OutputPaste, ResourceID: "volc.bigasr.sauc.duration",
-			SilenceGate: true,
+			Continuous: ContinuousConfig{SilenceGate: true},
 		},
 		Overlay: OverlayConfig{
 			Enabled: true, Position: DefaultOverlayPosition(), IdleVisible: false, ShowText: true, Scale: 1.0,
@@ -187,7 +195,20 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
 	cfg.Voice.migrateOutput(md.IsDefined("voice", "text_output"))
+	cfg.Voice.migrateContinuous()
 	return cfg, nil
+}
+
+// migrateContinuous 把旧的 mode = "continuous" 换成 [voice.continuous]。
+// 那份配置里的 device 是外部音源，不是听写用的麦克风；而且它本来就不注册
+// 热键，所以热键也清掉——否则迁完会凭空多出一路能往输入框打字的听写。
+func (vc *VoiceConfig) migrateContinuous() {
+	if vc.Mode != legacyModeContinuous {
+		return
+	}
+	vc.Continuous.Enabled = true
+	vc.Continuous.Device, vc.Device = vc.Device, ""
+	vc.Mode, vc.PushToTalk = ModeToggle, ""
 }
 
 // migrateOutput 把旧的 auto_submit 换成 text_output：只有没显式写 text_output 时才看它
@@ -219,16 +240,26 @@ func FindConfig() string {
 	return ""
 }
 
-func Save(cfg *Config) error {
-	path := FindConfig()
+// SavePath 报告 Save 会写到哪里：path 优先，其次现有配置，最后默认路径。
+func SavePath(path string) string {
+	if path != "" {
+		return path
+	}
+	if p := FindConfig(); p != "" {
+		return p
+	}
+	return DefaultPath()
+}
+
+// Save 写回 path；path 为空时找一份现有配置或用默认路径。用 -config 启动的
+// 实例必须把自己那份传进来，否则保存会覆盖另一份配置。
+func Save(cfg *Config, path string) error {
+	path = SavePath(path)
 	if path == "" {
-		path = DefaultPath()
-		if path == "" {
-			return fmt.Errorf("cannot determine user config directory")
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return err
-		}
+		return fmt.Errorf("cannot determine user config directory")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
 	}
 	f, err := os.Create(path)
 	if err != nil {
@@ -395,6 +426,8 @@ func ParseHotkeys(strings []string) ([]hotkey.Combo, error) {
 // ParseHotkeyList parses a comma-separated hotkey list such as "Fn, F13",
 // dropping duplicates. A comma right after "+" is the comma key itself, so
 // "Fn+," stays one hotkey. Full-width commas are accepted as separators.
+// An empty list is valid: no hotkey means no dictation, which is how a
+// transcription-only instance is configured.
 func ParseHotkeyList(s string) ([]hotkey.Combo, error) {
 	s = strings.ReplaceAll(s, "，", ",")
 	var combos []hotkey.Combo
@@ -415,9 +448,6 @@ func ParseHotkeyList(s string) ([]hotkey.Combo, error) {
 		if !slices.Contains(combos, c) {
 			combos = append(combos, c)
 		}
-	}
-	if len(combos) == 0 {
-		return nil, fmt.Errorf("empty hotkey string")
 	}
 	return combos, nil
 }

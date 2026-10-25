@@ -138,8 +138,14 @@ func main() {
 	if *debug && cfg.Debug.Enabled && (mode == "daemon" || mode == "web") {
 		eng.LoadPlugin(plugins.NewDebugPlugin())
 	}
-	eng.LoadPlugin(voice.NewVoicePlugin())
-	eng.LoadPlugin(overlay.NewOverlayPlugin())
+	// A plugin that fails to load leaves the app running without it; saying
+	// nothing makes that look like the feature simply did nothing.
+	for _, p := range []engine.Plugin{voice.NewVoicePlugin(), overlay.NewOverlayPlugin()} {
+		if err := eng.LoadPlugin(p); err != nil {
+			logger.Error("plugin failed to load", "error", err)
+			os.Exit(1)
+		}
+	}
 	// -config 指定的文件优先；否则热加载会把另一份配置的改动套到本实例上。
 	p := *cfgPath
 	if p == "" {
@@ -151,13 +157,13 @@ func main() {
 
 	switch mode {
 	case "tui":
-		runTUI(eng, cfg, *debug)
+		runTUI(eng, cfg, p, *debug)
 	case "web":
-		runWeb(eng, cfg, *debug)
+		runWeb(eng, cfg, p, *debug)
 	case "daemon":
 		runDaemon(eng)
 	default:
-		runApp(eng, cfg, *debug, logger)
+		runApp(eng, cfg, p, *debug, logger)
 	}
 }
 
@@ -169,21 +175,22 @@ func runDaemon(eng *engine.Engine) {
 	}
 }
 
-func uiOptions(eng *engine.Engine, cfg *config.Config, debug bool) gui.Options {
+func uiOptions(eng *engine.Engine, cfg *config.Config, cfgPath string, debug bool) gui.Options {
 	return gui.Options{
-		Config:   cfg,
-		Apply:    eng.ReloadConfig,
-		Provider: eng.Provider().Info(),
-		Debug:    debug,
+		Config:     cfg,
+		ConfigPath: cfgPath,
+		Apply:      eng.ReloadConfig,
+		Provider:   eng.Provider().Info(),
+		Debug:      debug,
 	}
 }
 
-func runApp(eng *engine.Engine, cfg *config.Config, debug bool, logger *slog.Logger) {
+func runApp(eng *engine.Engine, cfg *config.Config, cfgPath string, debug bool, logger *slog.Logger) {
 	voice.SetupTUILog()
 	voice.SetOutput(io.Discard)
 	done := make(chan struct{})
 	err := gui.RunApp(gui.AppOptions{
-		Options: uiOptions(eng, cfg, debug),
+		Options: uiOptions(eng, cfg, cfgPath, debug),
 		Logger:  logger,
 		Start: func(quit func()) {
 			go func() {
@@ -211,7 +218,7 @@ func runApp(eng *engine.Engine, cfg *config.Config, debug bool, logger *slog.Log
 	if errors.Is(err, gui.ErrNoWindow) {
 		fmt.Fprintf(os.Stderr, "%v\nFalling back to the terminal UI; use --web for the settings page in a browser.\n", err)
 		time.Sleep(2 * time.Second)
-		runTUI(eng, cfg, debug)
+		runTUI(eng, cfg, cfgPath, debug)
 		return
 	}
 	if err != nil {
@@ -221,10 +228,10 @@ func runApp(eng *engine.Engine, cfg *config.Config, debug bool, logger *slog.Log
 	}
 }
 
-func runWeb(eng *engine.Engine, cfg *config.Config, debug bool) {
+func runWeb(eng *engine.Engine, cfg *config.Config, cfgPath string, debug bool) {
 	voice.SetupTUILog()
 	voice.SetOutput(io.Discard)
-	srv, err := gui.ListenWeb("127.0.0.1:0", gui.Handler(uiOptions(eng, cfg, debug)))
+	srv, err := gui.ListenWeb("127.0.0.1:0", gui.Handler(uiOptions(eng, cfg, cfgPath, debug)))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "web UI failed: %v\n", err)
 		os.Exit(1)
@@ -239,10 +246,10 @@ func runWeb(eng *engine.Engine, cfg *config.Config, debug bool) {
 	srv.Close()
 }
 
-func runTUI(eng *engine.Engine, cfg *config.Config, debug bool) {
+func runTUI(eng *engine.Engine, cfg *config.Config, cfgPath string, debug bool) {
 	voice.SetupTUILog()
 	voice.SetOutput(io.Discard)
-	model := tui.New(cfg)
+	model := tui.New(cfg, cfgPath)
 	model.SetDebug(debug)
 	model.OnSave = func(c *config.Config) error { return eng.ReloadConfig(c) }
 	go func() {

@@ -59,12 +59,15 @@ type field struct {
 }
 
 type Model struct {
-	w, h        int
-	ready       bool
-	info        hotkey.ProviderInfo
-	logs        []string
-	devices     []voice.InputDevice
-	cfg         *config.Config
+	w, h    int
+	ready   bool
+	info    hotkey.ProviderInfo
+	logs    []string
+	devices []voice.InputDevice
+	cfg     *config.Config
+	// cfgPath is the file this instance was started with; saving anywhere
+	// else would overwrite someone else's config.
+	cfgPath     string
 	debug       bool
 	showLogs    bool
 	OnSave      func(*config.Config) error
@@ -81,20 +84,21 @@ type Model struct {
 	ecEditing bool
 }
 
-func New(cfg *config.Config) *Model {
+func New(cfg *config.Config, cfgPath string) *Model {
 	vc := cfg.Voice
 	ti := func(v string) textinput.Model { t := textinput.New(); t.SetValue(v); t.Cursor.Blink = false; return t }
 	positions := settings.OverlayPositionOptions(cfg.Overlay.Position)
 	// Devices are enumerated asynchronously (fetchDevices); until that lands
 	// the select offers the system default and whatever is configured.
 	devLabels, devValues, devIdx := deviceOptions(nil, vc.Device)
+	contLabels, contValues, contIdx := deviceOptions(nil, vc.Continuous.Device)
 	outLabels := []string{"上屏（粘贴到输入框）", "仅复制到剪贴板", "不输出"}
 	outValues := []string{config.OutputPaste, config.OutputClipboard, config.OutputNone}
 	fs := []field{
 		{label: "语音输入", key: "enabled", help: "关闭后不注册热键", fType: fToggle, boolVal: vc.Enabled},
 		{label: "录音设备", key: "device", help: deviceHelp, fType: fSelect, opts: devLabels, optVals: devValues, optIdx: devIdx},
 		{label: "热键", key: "push_to_talk", help: "例: Alt+Super / F9 / Ctrl+Alt+Tab；多个用逗号分隔，如 Fn, F13；不支持字母、数字、标点、空格等普通字符键", fType: fString, input: ti(vc.PushToTalk)},
-		{label: "模式", key: "mode", help: "会话怎么开始和结束：toggle 按一下开、再按一下停 / hold 按住说话 / continuous 启动即开始，会话断了自动重连、不注册热键", fType: fSelect, opts: config.ModeOptions(), optIdx: idxOf(config.ModeOptions(), vc.Mode)},
+		{label: "模式", key: "mode", help: "热键怎么开始和结束一次听写：toggle 按一下开、再按一下停 / hold 按住说话", fType: fSelect, opts: config.ModeOptions(), optIdx: idxOf(config.ModeOptions(), vc.Mode)},
 		{label: "引擎", key: "engine", help: "回车选择识别引擎；流式引擎支持实时字幕", fType: fAction},
 		{label: "引擎配置", key: "engine_config", help: "回车配置当前引擎的凭据与参数；各引擎独立保存", fType: fAction},
 		{label: "语言", key: "language", help: "BCP-47，如 zh-CN；空 = 引擎默认", fType: fString, input: ti(vc.Language)},
@@ -103,9 +107,11 @@ func New(cfg *config.Config) *Model {
 		{label: "热词", key: "hotwords", help: "逗号分隔术语", fType: fString, input: ti(strings.Join(vc.Hotwords, ", "))},
 		{label: "热词文件", key: "hotwords_file", help: "外部词表路径，一行一个词，# 开头为注释；与上面的热词合并，每次会话开始时重读", fType: fString, input: ti(vc.HotwordsFile)},
 		{label: "结果订阅", key: "stream_addr", help: "在本机开 WebSocket 供别的程序订阅识别结果，如 127.0.0.1:7590；可多个订阅者，只允许回环地址，留空关闭", fType: fString, input: ti(vc.StreamAddr)},
+		{label: "持续转写", key: "continuous_enabled", help: "与听写并行的另一路：转会议等外部音源，由说话声切句，不输出文本，只给日志、浮层和结果订阅", fType: fToggle, boolVal: vc.Continuous.Enabled},
+		{label: "持续转写设备", key: "continuous_device", help: "外部音源的录音设备，通常是回环设备；和上面听写用的麦克风无关", fType: fSelect, opts: contLabels, optVals: contValues, optIdx: contIdx},
 		{label: "提示位置", key: "overlay_position", help: "notch 为 macOS 刘海，其他平台按 top-center 处理；保存后立即生效", fType: fSelect, opts: positions, optIdx: idxOf(positions, cfg.Overlay.Position)},
 	}
-	return &Model{cfg: cfg, fields: fs, logs: make([]string, 0, 100), cursor: -1, showLogs: true}
+	return &Model{cfg: cfg, cfgPath: cfgPath, fields: fs, logs: make([]string, 0, 100), cursor: -1, showLogs: true}
 }
 
 func (m *Model) SetDebug(debug bool) {
@@ -118,16 +124,6 @@ func (f field) selected() string {
 		return f.optVals[f.optIdx]
 	}
 	return f.opts[f.optIdx]
-}
-
-// selectedMode is the mode chosen in the form, including unsaved edits.
-func (m *Model) selectedMode() string {
-	for _, f := range m.fields {
-		if f.key == "mode" {
-			return f.selected()
-		}
-	}
-	return m.cfg.Voice.Mode
 }
 
 func idxOf(opts []string, v string) int {
@@ -294,6 +290,10 @@ func (m *Model) save() {
 			vc.HotwordsFile = strings.TrimSpace(f.input.Value())
 		case "stream_addr":
 			vc.StreamAddr = strings.TrimSpace(f.input.Value())
+		case "continuous_enabled":
+			vc.Continuous.Enabled = f.boolVal
+		case "continuous_device":
+			vc.Continuous.Device = f.selected()
 		case "overlay_position":
 			next.Overlay.Position = f.selected()
 		}
@@ -309,10 +309,10 @@ func (m *Model) save() {
 	}
 	positionChanged := next.Overlay.Position != m.cfg.Overlay.Position
 	m.cfg = &next
-	if err := config.Save(m.cfg); err != nil {
+	if err := config.Save(m.cfg, m.cfgPath); err != nil {
 		m.logf("保存失败: %s", err)
 	} else {
-		m.logf("✅ 配置已保存到 %s", config.FindConfig())
+		m.logf("✅ 配置已保存到 %s", config.SavePath(m.cfgPath))
 	}
 	m.logf("  push_to_talk=%s", vc.PushToTalk)
 	if positionChanged {
@@ -521,10 +521,6 @@ func (m *Model) renderField(i int, f field) string {
 		if f.key == "access_key" && !editing && len(v) > 8 {
 			v = v[:8] + "***"
 		}
-		// 持续转写由说话声触发，没有要按的键；说清楚，别让设置默默失效。
-		if f.key == "push_to_talk" && !editing && m.selectedMode() == config.ModeContinuous {
-			return dStyle.Render(v + "  (持续转写由说话声触发，不用热键)")
-		}
 		if editing {
 			return f.input.View()
 		}
@@ -538,10 +534,6 @@ func (m *Model) renderField(i int, f field) string {
 		v := f.opts[f.optIdx]
 		if v == "" {
 			v = "(未设置)"
-		}
-		// 持续转写转的是外部音源，不是用户在说，所以没有文本该往哪里去这回事。
-		if f.key == "text_output" && m.selectedMode() == config.ModeContinuous {
-			return dStyle.Render(v + "  (持续转写转的是外部音源，不输出文本)")
 		}
 		if editing {
 			return aStyle.Render("[" + v + " ▲▼]")
