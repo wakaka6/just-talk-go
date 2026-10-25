@@ -248,14 +248,22 @@ hotkeys = []                       # extra hotkeys registered by the debug plugi
 
 `position = "notch"` (the macOS default) expands the indicator from the notch, and `show_text` controls whether live/final text is shown inside it; the overlay sticks to the screen under the mouse pointer, and on a screen without a notch it grows out of the top center instead (text included). On Linux/Windows `"notch"` behaves as `top-center`. See [macOS Notch Overlay](#macos-notch-overlay) above for previews and the visual behavior. In the TUI, select the overlay position field, press `e` to edit, `j`/`k` to cycle, and `Enter` to save — it applies immediately. Existing configs that set `position` explicitly are not migrated.
 
-**Recording device**: an empty `device` or `"default"` uses the system default input. On macOS the value is matched against the device UID exactly, then against the device name (case-insensitive). If nothing matches, Just Talk does not fall back to the default microphone: it logs the available input devices and refuses to record. The settings window lists the devices grouped by what they capture:
+**Recording device**: an empty `device` or `"default"` uses the system default input. Both the settings window and the TUI list the devices grouped by what they capture (the TUI shows one line at a time, so the kind is appended to the entry, e.g. `BlackHole 2ch · 回环`):
 
 | Group | What it records |
 |---|---|
 | Microphone | The outside world: your voice, the room |
 | Loopback | What the computer plays: a meeting, a video. A virtual sound card (BlackHole, Loopback) or an aggregate device; the app you want to record must play into it |
 
-macOS has no built-in "record system audio" input, so capturing what the computer plays needs such a driver; the settings window says so when none is installed. On Linux a PulseAudio / PipeWire `.monitor` source is a loopback; Windows winmm cannot capture playback.
+A device named in the config but not connected right now stays in the list marked “not detected”, so opening the settings never silently changes the recording source.
+
+**Platform support differs**:
+
+| | Selecting a device | Telling microphone from loopback | Recording what the computer plays |
+|---|---|---|---|
+| macOS | ✅ Matched against the device UID, then the name (case-insensitive); an unknown device lists the available ones and refuses to record instead of falling back to the default microphone | ✅ From the CoreAudio transport type (virtual/aggregate with output streams = loopback) | ⚠️ The OS has no “system audio” input: it needs a driver such as BlackHole or Loopback, with the app you want to record playing into it. The UI says so when none is installed |
+| Linux | ✅ Passed to `arecord -D` verbatim; arecord fails on an unknown device | ⚠️ Only names containing `.monitor`; everything else counts as a microphone | ⚠️ A PulseAudio / PipeWire `.monitor` source is a loopback, but the list comes from the `hw:` / `plughw:` / `default` entries of `arecord -L`, which usually omits monitor sources: set `device` by hand (see `pactl list short sources`) |
+| Windows | ✅ By winmm device name (case-insensitive) or device index | ❌ winmm does not report it; every device counts as a microphone | ❌ Not supported: winmm only records capture devices, and WASAPI loopback is not implemented yet |
 
 **Continuous transcription**: `mode = "continuous"` is for transcribing a meeting or other system audio. Recognition starts when Just Talk starts, and every session that ends for any reason (server end, error, network drop) reconnects automatically (backoff from 0.5s, capped at 5s). The recording device stays open across reconnects, and up to the last 5 seconds of audio captured during a reconnect are replayed into the new session. This mode registers no hotkeys and **never** types, pastes or touches the clipboard; results go only to the log, the overlay and the WebSocket subscription below. It needs a streaming engine (e.g. `doubao-stream`, `dashscope`). On macOS, pair it with a loopback device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole): set the meeting app's speaker output to BlackHole and record from it:
 
