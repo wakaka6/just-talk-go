@@ -211,12 +211,13 @@ Recommended config:
 ```toml
 [voice]
 enabled = true
-mode = "toggle"                    # toggle | hold
+mode = "toggle"                    # toggle | hold | continuous (see below)
 push_to_talk = "Alt+Super"
 language = "zh-CN"
 auto_submit = true                 # auto-submit recognized text
 stop_delay_ms = 0                  # release delay in hold mode
-device = ""                        # recording device (empty = default)
+device = ""                        # recording device (empty = default; macOS matches device UID or name)
+stream_addr = ""                   # WebSocket address for recognition results, e.g. "127.0.0.1:7590" (empty = off)
 gain = 0                           # microphone gain
 app_key = "your-app-key"
 access_key = "your-access-key"
@@ -246,6 +247,35 @@ hotkeys = []                       # extra hotkeys registered by the debug plugi
 ```
 
 `position = "notch"` (the macOS default) expands the indicator from the notch, and `show_text` controls whether live/final text is shown inside it; the overlay sticks to the screen under the mouse pointer, and on a screen without a notch it grows out of the top center instead (text included). On Linux/Windows `"notch"` behaves as `top-center`. See [macOS Notch Overlay](#macos-notch-overlay) above for previews and the visual behavior. In the TUI, select the overlay position field, press `e` to edit, `j`/`k` to cycle, and `Enter` to save — it applies immediately. Existing configs that set `position` explicitly are not migrated.
+
+**Recording device**: an empty `device` or `"default"` uses the system default input. On macOS the value is matched against the device UID exactly, then against the device name (case-insensitive). If nothing matches, Just Talk does not fall back to the default microphone: it logs the available input devices and refuses to record.
+
+**Continuous transcription**: `mode = "continuous"` is for transcribing a meeting or other system audio. Recognition starts when Just Talk starts, and every session that ends for any reason (server end, error, network drop) reconnects automatically (backoff from 0.5s, capped at 5s). The recording device stays open across reconnects, and up to the last 5 seconds of audio captured during a reconnect are replayed into the new session. This mode registers no hotkeys and **never** types, pastes or touches the clipboard; results go only to the log, the overlay and the WebSocket subscription below. It needs a streaming engine (e.g. `doubao-stream`, `dashscope`). On macOS, pair it with a loopback device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole): set the meeting app's speaker output to BlackHole and record from it:
+
+```toml
+[voice]
+mode = "continuous"
+device = "BlackHole 2ch"
+stream_addr = "127.0.0.1:7590"
+
+[overlay]
+enabled = false                    # turn the overlay off if you don't want the notch indicator
+```
+
+**Recognition result subscription**: with `stream_addr` set, Just Talk serves a WebSocket at `ws://<stream_addr>/asr` in every recording mode. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is logged as an error and the server stays off. Browser connections from other origins are rejected. Any number of subscribers may connect at any time; a config reload restarts the server only when the address changes. The server sends JSON text frames only:
+
+```jsonc
+// an ASR session connected
+{"type":"session","state":"start","session":"jt-20261024T143352-1"}
+// one per recognition result frame: text is the session's full text so far, utterances are the
+// server's sentences (definite = will not change), final is true only on the server's last packet
+{"type":"asr","session":"jt-20261024T143352-1","text":"Hello. We","utterances":[{"text":"Hello.","definite":true},{"text":"We","definite":false}],"final":false}
+// the session ended: reason is last (server's last packet), error (recognition or send error)
+// or closed (connection closed, recording stopped, shutdown)
+{"type":"session","state":"end","session":"jt-20261024T143352-1","reason":"closed"}
+```
+
+Publishing never slows recognition down: each subscriber has its own buffer, and a subscriber that falls more than 256 frames behind is disconnected without affecting the others.
 
 </details>
 

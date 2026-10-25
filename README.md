@@ -211,12 +211,13 @@ Windows 上低级键盘钩子只观察按键边沿，不消费、不回放修饰
 ```toml
 [voice]
 enabled = true
-mode = "toggle"                    # toggle | hold
+mode = "toggle"                    # toggle | hold | continuous（持续转写，见下文）
 push_to_talk = "Alt+Super"
 language = "zh-CN"
 auto_submit = true                 # 识别完成后自动上屏
 stop_delay_ms = 0                  # hold 模式松开后的停止延迟
-device = ""                        # 录音设备（留空使用默认）
+device = ""                        # 录音设备（留空使用默认；macOS 按设备 UID 或名称匹配）
+stream_addr = ""                   # 识别结果 WebSocket 订阅地址，如 "127.0.0.1:7590"（留空关闭）
 gain = 0                           # 麦克风增益
 app_key = "your-app-key"
 access_key = "your-access-key"
@@ -246,6 +247,34 @@ hotkeys = []                       # 调试插件额外注册的热键
 ```
 
 `position = "notch"`（macOS 默认）让提示从刘海展开，`show_text` 控制刘海内是否显示实时/最终文字；浮层固定在鼠标所在屏幕，屏幕无刘海时从顶部中央展开（同样显示文字），Linux / Windows 上 `"notch"` 按 `top-center` 处理。预览与效果说明见上文 [macOS 刘海浮层](#macos-刘海浮层)。在 TUI 中选中“提示位置”按 `e` 进入编辑、`j`/`k` 切换、`Enter` 保存即可即时修改；已有配置中显式写了 `position` 的不会被迁移。
+
+**录音设备**：`device` 留空或为 `"default"` 时使用系统默认输入。macOS 上会先按设备 UID 精确匹配，再按设备名称（不区分大小写）匹配；找不到时不会退回默认麦克风，而是在日志里列出可用输入设备并拒绝录音。
+
+**持续转写**：`mode = "continuous"` 用于转写会议或系统音频。启动后自动开始识别，会话因任何原因结束（服务端结束、错误、断网）都会自动重连（0.5s 起退避，最长 5s）；录音设备在重连期间保持打开，重连间隙里最近约 5 秒的音频会补发给新会话。该模式不注册热键，也**从不**上屏、不写剪贴板；结果只进入日志、浮层和下文的 WebSocket 订阅。需要流式引擎（如 `doubao-stream`、`dashscope`）。macOS 上可配合 [BlackHole](https://github.com/ExistentialAudio/BlackHole) 等虚拟音频设备：把会议软件的扬声器输出设为 BlackHole，再让 Just Talk 从它录音：
+
+```toml
+[voice]
+mode = "continuous"
+device = "BlackHole 2ch"
+stream_addr = "127.0.0.1:7590"
+
+[overlay]
+enabled = false                    # 不需要刘海提示时关闭浮层
+```
+
+**识别结果订阅**：设置 `stream_addr` 后，Just Talk 在 `ws://<stream_addr>/asr` 提供 WebSocket 订阅，所有录音模式都会推送。只允许回环地址（`127.0.0.1`、`::1`、`localhost`），其他地址会报错并不启动；来自其他网页来源的浏览器连接会被拒绝。可同时连接多个订阅者，随时连接均可；修改配置时只有地址变化才会重启服务。服务端只发送 JSON 文本帧：
+
+```jsonc
+// ASR 会话连接成功
+{"type":"session","state":"start","session":"jt-20261024T143352-1"}
+// 每个识别结果帧：text 为本会话累计全文，utterances 为服务端分句（definite = 该句已确定），
+// final 仅在服务端最后一包时为 true
+{"type":"asr","session":"jt-20261024T143352-1","text":"你好。我们","utterances":[{"text":"你好。","definite":true},{"text":"我们","definite":false}],"final":false}
+// 会话结束；reason 为 last（服务端最后一包）、error（识别或发送出错）或 closed（连接关闭、停止录音、退出）
+{"type":"session","state":"end","session":"jt-20261024T143352-1","reason":"closed"}
+```
+
+推送不会拖慢识别：每个订阅者有独立缓冲，缓冲堆满（超过 256 帧没读走）的订阅者会被断开，不影响其他订阅者。
 
 </details>
 

@@ -5,6 +5,9 @@ All notable project changes are tracked here.
 ## Unreleased
 
 - The tray panel has a “语音输入” switch to turn voice input on or off without opening the settings window. It changes only `voice.enabled`, and an open settings window picks it up when focused without discarding its unsaved edits.
+- Add `mode = "continuous"` (“持续转写”) for transcribing a meeting or system audio. It starts with Just Talk, registers no hotkeys, never types, pastes or touches the clipboard, and reconnects automatically whenever a session ends (backoff 0.5s–5s). The recording device stays open across reconnects, and about the last 5 seconds of audio captured during a reconnect are replayed into the new session. It needs a streaming engine.
+- macOS now honors `[voice] device`: it matches an input device by UID, or by name ignoring case (e.g. `"BlackHole 2ch"`). An unknown device is an error that lists the available input devices; recording no longer silently uses the default microphone.
+- Add `[voice] stream_addr` (e.g. `"127.0.0.1:7590"`): a local WebSocket at `ws://<stream_addr>/asr` publishes session start/end events and every recognition result, including per-sentence `utterances` with their `definite` flag, in every mode. Only loopback addresses are accepted, and a slow subscriber is disconnected instead of slowing recognition down.
 
 ## v0.4.0 - 2026-10-17
 
