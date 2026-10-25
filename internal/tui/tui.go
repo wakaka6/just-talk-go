@@ -85,7 +85,7 @@ func New(cfg *config.Config) *Model {
 	fs := []field{
 		{label: "语音输入", key: "enabled", help: "关闭后不注册热键", fType: fToggle, boolVal: vc.Enabled},
 		{label: "热键", key: "push_to_talk", help: "例: Alt+Super / F9 / Ctrl+Alt+Tab；多个用逗号分隔，如 Fn, F13；不支持字母、数字、标点、空格等普通字符键", fType: fString, input: ti(vc.PushToTalk)},
-		{label: "模式", key: "mode", help: "toggle 切换 / hold 按住", fType: fSelect, opts: []string{"toggle", "hold"}, optIdx: idxOf([]string{"toggle", "hold"}, vc.Mode)},
+		{label: "模式", key: "mode", help: "toggle 切换 / hold 按住 / continuous 持续转写（不上屏）", fType: fSelect, opts: []string{"toggle", "hold", "continuous"}, optIdx: idxOf([]string{"toggle", "hold", "continuous"}, vc.Mode)},
 		{label: "引擎", key: "engine", help: "回车选择识别引擎；流式引擎支持实时字幕", fType: fAction},
 		{label: "引擎配置", key: "engine_config", help: "回车配置当前引擎的凭据与参数；各引擎独立保存", fType: fAction},
 		{label: "语言", key: "language", help: "BCP-47，如 zh-CN；空 = 引擎默认", fType: fString, input: ti(vc.Language)},

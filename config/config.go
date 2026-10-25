@@ -40,6 +40,9 @@ type VoiceConfig struct {
 	StopDelayMs int    `toml:"stop_delay_ms"`
 	Language    string `toml:"language"`
 	AutoSubmit  bool   `toml:"auto_submit"`
+	// StreamAddr 非空时在该回环地址开启 WebSocket 订阅服务（路径 /asr），
+	// 向订阅者推送会话事件与每条识别结果；空 = 关闭。
+	StreamAddr string `toml:"stream_addr"`
 	// Engine 语音引擎类型；留空时使用默认引擎。
 	Engine string `toml:"engine"`
 	// EngineConfigs 按引擎类型分组保存私有配置。

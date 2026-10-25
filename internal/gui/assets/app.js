@@ -252,7 +252,7 @@ $("manualToggle").addEventListener("click", () => {
 });
 
 function renderModes() {
-  const labels = { toggle: "切换", hold: "按住" };
+  const labels = { toggle: "切换", hold: "按住", continuous: "持续转写" };
   $("modes").replaceChildren(...saved.modes.map((m) => el("button", {
     type: "button",
     role: "radio",

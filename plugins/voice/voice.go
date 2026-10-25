@@ -316,6 +316,15 @@ type VoicePlugin struct {
 	flowActive             bool
 	cancelHotkeyRegistered bool
 	retryHotkeyRegistered  bool
+	// streamPrefix makes published session ids unique across restarts.
+	streamPrefix string
+	stream       *streamServer
+	streamAddr   string
+	// runCtx is the Start context; nil before Start and after Stop.
+	runCtx     context.Context
+	contCancel context.CancelFunc
+	contDone   chan struct{}
+	contCfg    config.VoiceConfig
 }
 
 type recordingSession struct {
@@ -329,7 +338,13 @@ type recordingSession struct {
 	startedAt   time.Time
 }
 
-func NewVoicePlugin() *VoicePlugin     { return &VoicePlugin{stopDelayMs: defaultStopDelayMs} }
+func NewVoicePlugin() *VoicePlugin {
+	return &VoicePlugin{
+		stopDelayMs:  defaultStopDelayMs,
+		streamPrefix: "jt-" + time.Now().Format("20060102T150405"),
+	}
+}
+
 func (p *VoicePlugin) Name() string    { return "voice" }
 func (p *VoicePlugin) Version() string { return "0.6.0" }
 
@@ -345,19 +360,28 @@ func (p *VoicePlugin) Start(ctx context.Context) error {
 	p.logger.Info("voice plugin started", "mode", p.mode)
 	p.startEventWorker(ctx)
 	p.mu.Lock()
+	p.runCtx = ctx
 	p.publishStatusLocked()
 	p.mu.Unlock()
+	p.syncContinuous()
 	<-ctx.Done()
 	return ctx.Err()
 }
 
 func (p *VoicePlugin) Stop() error {
 	p.mu.Lock()
+	p.runCtx = nil
+	p.mu.Unlock()
+	p.syncContinuous()
+	p.mu.Lock()
 	session := p.detachRecordingLocked()
 	p.trackFinishLocked(session)
 	p.publishStatusLocked()
 	p.mu.Unlock()
 	p.finishRecordingSession(session)
+	p.mu.Lock()
+	p.syncStreamServerLocked("")
+	p.mu.Unlock()
 	return nil
 }
 
@@ -366,6 +390,7 @@ func (p *VoicePlugin) OnConfigReload(cfg *config.Config) error { return p.regist
 func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	p.mu.Lock()
 	p.cfg = cfg
+	p.syncStreamServerLocked(cfg.Voice.StreamAddr)
 	p.mu.Unlock()
 	vc := cfg.Voice
 	if !vc.Enabled {
@@ -379,19 +404,26 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 			p.env.UnregisterHotkey(c)
 		}
 		p.logger.Info("voice disabled")
+		p.syncContinuous()
 		return nil
-	}
-	combos, err := config.ParseHotkeyList(vc.PushToTalk)
-	if err != nil {
-		return fmt.Errorf("parse hotkey %q: %w", vc.PushToTalk, err)
 	}
 	mode := vc.Mode
 	if mode == "" {
 		mode = "hold"
 	}
-	for _, c := range combos {
-		if err := validateVoiceHotkey(c); err != nil {
-			return err
+	// Continuous mode registers no voice hotkeys: nothing may start a
+	// session that pastes text.
+	var combos []hotkey.Combo
+	if mode != modeContinuous {
+		var err error
+		combos, err = config.ParseHotkeyList(vc.PushToTalk)
+		if err != nil {
+			return fmt.Errorf("parse hotkey %q: %w", vc.PushToTalk, err)
+		}
+		for _, c := range combos {
+			if err := validateVoiceHotkey(c); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -442,6 +474,11 @@ func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 		registered = append(registered, c)
 		p.logger.Info("hotkey_registered", "combo", c, "suppress", opts.Suppress)
 	}
+	if modeChanged && mode == modeContinuous {
+		// A hotkey session left running would never be stopped now.
+		p.cancelRecording()
+	}
+	p.syncContinuous()
 	return nil
 }
 
@@ -699,21 +736,29 @@ func (p *VoicePlugin) connectASR(ctx context.Context, cancel context.CancelFunc,
 	p.audioDone = audioDone
 	p.publishStatusLocked()
 	p.mu.Unlock()
+	p.publishSessionStart(sessionID)
 
 	go func() {
 		defer close(audioDone)
 		p.streamAudio(ctx, rec, client)
 	}()
 	go func() {
+		reason := sessionEndClosed
+		defer func() { p.publishSessionEnd(sessionID, reason) }()
 		for result := range client.Results() {
 			if result.Error != nil {
+				reason = sessionEndError
 				pout("❌ ASR 错误: %v", result.Error)
 				continue
 			}
+			if result.Last {
+				reason = sessionEndLast
+			}
+			p.publishASRResult(sessionID, client, result)
 			if result.Text != "" {
 				setOverlayPartial(sessionID, result.Text)
 			}
-			if result.IsFinal {
+			if result.IsFinal && result.Text != "" {
 				pout("\n🎤 最终: %s", result.Text)
 			} else if result.Text != "" {
 				pout("\r🎤 %s", result.Text)

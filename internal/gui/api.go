@@ -164,7 +164,7 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 		},
 		OverlayPositions: settings.OverlayPositionOptions(cfg.Overlay.Position),
 		Languages:        settings.LanguageOptions(vc.Language),
-		Modes:            []string{"toggle", "hold"},
+		Modes:            []string{"toggle", "hold", "continuous"},
 	}
 	engines := settings.Engines
 	if current := st.Settings.Engine; !slices.ContainsFunc(engines, func(e settings.Engine) bool { return e.Name == current }) {
@@ -314,7 +314,7 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	if err := settings.ValidateHotkeys(pushToTalk); err != nil {
 		return nil, err
 	}
-	if in.Mode != "toggle" && in.Mode != "hold" {
+	if in.Mode != "toggle" && in.Mode != "hold" && in.Mode != "continuous" {
 		return nil, fmt.Errorf("未知模式: %s", in.Mode)
 	}
 	if in.StopDelayMs < 0 {
