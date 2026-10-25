@@ -3,6 +3,7 @@ All notable project changes are tracked here.
 
 ## Unreleased
 
+- The subscription server is visible in the UIs: the settings window and the TUI edit `[voice] stream_addr`, show the URL subscribers connect to and how many are connected right now, and reject a non-loopback address when you save instead of leaving the server quietly off.
 - Hot reload now also sees atomic saves. The watcher only reacted to write events, so an editor or script that writes a temp file and renames it over the config changed nothing until the next restart.
 - `[voice] text_output` decides where recognized text goes: `paste`, `clipboard` or `none`. `none` transcribes without touching the focused field or the clipboard, which used to be possible only in continuous mode. The old `auto_submit` migrates on load (`true` → `paste`, `false` → `clipboard`) and is dropped from the file on the next save.
 - `[voice] hotwords_file` reads hotwords from a text file (one word per line, `#` comments, `~` expanded) and merges them with `hotwords`, so another program can keep the word list in step with the current context without editing the config or restarting. The file is read when a session opens; continuous mode also watches it and reconnects once after an edit, because a session there can outlive many edits. An unreadable file is a warning, not an error.

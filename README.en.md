@@ -281,7 +281,7 @@ stream_addr = "127.0.0.1:7590"
 enabled = false                    # turn the overlay off if you don't want the notch indicator
 ```
 
-**Recognition result subscription**: with `stream_addr` set, Just Talk serves a WebSocket at `ws://<stream_addr>/asr` in every recording mode. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is logged as an error and the server stays off. Browser connections from other origins are rejected. Any number of subscribers may connect at any time; a config reload restarts the server only when the address changes. The server sends JSON text frames only:
+**Recognition result subscription**: with `stream_addr` set (editable in the settings window and the TUI, both of which show the listening address and how many subscribers are connected), Just Talk serves a WebSocket at `ws://<stream_addr>/asr` in every recording mode. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is rejected when you save. Browser connections from other origins are rejected. **Any number of subscribers** may connect at any time and every one of them receives the same frames (filter client-side if you only care about some); a subscriber that falls behind is disconnected on its own without slowing the others down. A config reload restarts the server only when the address changes. The server sends JSON text frames only:
 
 ```jsonc
 // an ASR session connected
