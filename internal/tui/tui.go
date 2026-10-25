@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -110,10 +111,18 @@ func New(cfg *config.Config, cfgPath string) *Model {
 		{label: "持续转写设备", key: "continuous_device", help: "外部音源的录音设备，通常是回环设备；和上面听写用的麦克风无关", fType: fSelect, opts: contLabels, optVals: contValues, optIdx: contIdx},
 		{label: "持续转写热键", key: "continuous_hotkey", help: "按一下开、再按一下关；只改当前状态，不写配置。留空 = 不注册，不能与听写热键重复", fType: fString, input: ti(vc.Continuous.Hotkey)},
 		{label: "结果订阅", key: "stream_enabled", help: "在本机开 WebSocket，把持续转写的识别结果推给别的程序；可多个订阅者，听写不推出去", fType: fToggle, boolVal: vc.StreamEnabled},
-		{label: "订阅地址", key: "stream_addr", help: "如 127.0.0.1:7590，只允许回环地址；也可写 unix:<路径>（不支持 Windows）", fType: fString, input: ti(vc.StreamAddr)},
+		{label: "订阅地址", key: "stream_addr", help: streamAddrHelp(), fType: fString, input: ti(vc.StreamAddr)},
 		{label: "提示位置", key: "overlay_position", help: "notch 为 macOS 刘海，其他平台按 top-center 处理；保存后立即生效", fType: fSelect, opts: positions, optIdx: idxOf(positions, cfg.Overlay.Position)},
 	}
 	return &Model{cfg: cfg, cfgPath: cfgPath, fields: fs, logs: make([]string, 0, 100), cursor: -1, showLogs: true}
+}
+
+// streamAddrHelp offers unix: only where it is accepted: Windows refuses it.
+func streamAddrHelp() string {
+	if runtime.GOOS == "windows" {
+		return "如 127.0.0.1:7590，只允许回环地址"
+	}
+	return "如 127.0.0.1:7590，只允许回环地址；也可写 unix:<路径>，只有你自己能连"
 }
 
 func (m *Model) SetDebug(debug bool) {

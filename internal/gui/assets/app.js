@@ -63,6 +63,8 @@ function applyState(state) {
   draft = clone(state.settings);
   edits = {};
   document.body.classList.toggle("mac-app", state.shell === "app" && state.platform === "darwin");
+  // Windows refuses unix: addresses, so do not offer them there.
+  $("streamUnixHint").hidden = state.platform === "windows";
   $("configPath").textContent = state.configPath;
   $("configPath").title = state.configPath;
   form.elements.enabled.checked = draft.enabled;
