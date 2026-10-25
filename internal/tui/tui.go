@@ -102,7 +102,7 @@ func New(cfg *config.Config, cfgPath string) *Model {
 		{label: "引擎", key: "engine", help: "回车选择识别引擎；流式引擎支持实时字幕", fType: fAction},
 		{label: "引擎配置", key: "engine_config", help: "回车配置当前引擎的凭据与参数；各引擎独立保存", fType: fAction},
 		{label: "语言", key: "language", help: "BCP-47，如 zh-CN；空 = 引擎默认", fType: fString, input: ti(vc.Language)},
-		{label: "输出", key: "text_output", help: "识别结果送到哪里；不输出 = 只转写，结果进日志和识别结果订阅", fType: fSelect, opts: outLabels, optVals: outValues, optIdx: idxOf(outValues, vc.TextOutput)},
+		{label: "输出", key: "text_output", help: "听写结果送到哪里；不输出 = 只转写，结果只进日志和浮层", fType: fSelect, opts: outLabels, optVals: outValues, optIdx: idxOf(outValues, vc.TextOutput)},
 		{label: "停止延迟(ms)", key: "stop_delay_ms", help: "松手后补录毫秒", fType: fString, input: ti(fmt.Sprintf("%d", vc.StopDelayMs))},
 		{label: "热词", key: "hotwords", help: "逗号分隔术语", fType: fString, input: ti(strings.Join(vc.Hotwords, ", "))},
 		{label: "热词文件", key: "hotwords_file", help: "外部词表路径，一行一个词，# 开头为注释；与上面的热词合并，每次会话开始时重读", fType: fString, input: ti(vc.HotwordsFile)},

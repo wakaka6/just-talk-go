@@ -5,7 +5,7 @@
 // settings. Editing happens in the settings window, which 打开设置 brings
 // forward.
 
-const MODE_LABELS = { toggle: "切换", hold: "按住", continuous: "持续转写" };
+const MODE_LABELS = { toggle: "切换", hold: "按住" };
 const OUTPUT_LABELS = { paste: "自动上屏", clipboard: "复制到剪贴板", none: "不输出" };
 
 let state = null;

@@ -84,7 +84,7 @@ const (
 	OutputPaste = "paste"
 	// OutputClipboard 只写剪贴板。
 	OutputClipboard = "clipboard"
-	// OutputNone 不输出：只转写，结果进日志、浮层和识别结果订阅。
+	// OutputNone 不输出：只转写，结果只进日志和浮层（听写不进识别结果订阅）。
 	OutputNone = "none"
 )
 
