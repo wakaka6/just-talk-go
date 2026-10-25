@@ -342,6 +342,11 @@ type VoicePlugin struct {
 	// over an earlier toggle.
 	contEnabled    bool
 	contConfigured bool
+	// contSync wakes the worker that starts and stops the service. Tearing it
+	// down can take seconds, and the hotkey callback runs on the global event
+	// tap: doing it there would stall every keystroke on the machine.
+	contSync     chan struct{}
+	contSyncOnce sync.Once
 }
 
 type recordingSession struct {
@@ -376,6 +381,7 @@ func (p *VoicePlugin) Init(env engine.PluginEnv) error {
 func (p *VoicePlugin) Start(ctx context.Context) error {
 	p.logger.Info("voice plugin started", "mode", p.mode)
 	p.startEventWorker(ctx)
+	p.startContSyncWorker(ctx)
 	p.mu.Lock()
 	p.runCtx = ctx
 	p.publishStatusLocked()
@@ -566,7 +572,30 @@ func (p *VoicePlugin) onContinuousHotkey(evt hotkey.Event) {
 	} else {
 		pout("\U0001f3a7 持续转写：关")
 	}
-	p.syncContinuous()
+	// Hand the work to the sync worker; see contSync.
+	select {
+	case p.contSync <- struct{}{}:
+	default:
+	}
+}
+
+// startContSyncWorker serialises start/stop so two quick presses cannot run
+// two teardowns at once. A pending wake is enough: syncContinuous always acts
+// on the current desired state.
+func (p *VoicePlugin) startContSyncWorker(ctx context.Context) {
+	p.contSyncOnce.Do(func() {
+		p.contSync = make(chan struct{}, 1)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-p.contSync:
+					p.syncContinuous()
+				}
+			}
+		}()
+	})
 }
 
 func (p *VoicePlugin) onRetryHotkey(evt hotkey.Event) {
