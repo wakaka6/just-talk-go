@@ -258,16 +258,23 @@ func shortTempDir(t *testing.T) string {
 	return dir
 }
 
-func TestCheckStreamAddrAcceptsBothKinds(t *testing.T) {
+func TestCheckStreamAcceptsBothKinds(t *testing.T) {
 	for _, addr := range []string{"127.0.0.1:7590", "localhost:0", "unix:/tmp/jt.sock", "unix:~/jt.sock"} {
-		if err := CheckStreamAddr(addr); err != nil {
-			t.Fatalf("CheckStreamAddr(%q) = %v, want accepted", addr, err)
+		if err := CheckStream(true, addr); err != nil {
+			t.Fatalf("CheckStream(%q) = %v, want accepted", addr, err)
 		}
 	}
 	for _, addr := range []string{"0.0.0.0:7590", "192.168.1.5:7590", "unix:", "7590"} {
-		if err := CheckStreamAddr(addr); err == nil {
-			t.Fatalf("CheckStreamAddr(%q) was accepted", addr)
+		// Off does not excuse a bad address: switching on later must not fail.
+		if err := CheckStream(false, addr); err == nil {
+			t.Fatalf("CheckStream(%q) was accepted", addr)
 		}
+	}
+	if err := CheckStream(true, ""); err == nil {
+		t.Fatal("switched on with no address was accepted")
+	}
+	if err := CheckStream(false, ""); err != nil {
+		t.Fatalf("switched off with no address = %v, want accepted", err)
 	}
 }
 

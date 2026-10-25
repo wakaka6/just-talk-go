@@ -219,7 +219,8 @@ language = "zh-CN"
 text_output = "paste"              # 识别结果送到哪里：paste 上屏 / clipboard 仅剪贴板 / none 不输出
 stop_delay_ms = 0                  # hold 模式松开后的停止延迟
 device = ""                        # 录音设备（留空使用默认；macOS 按设备 UID 或名称匹配）
-stream_addr = ""                   # 订阅地址："127.0.0.1:7590" 或 "unix:~/.../asr.sock"（留空关闭）
+stream_enabled = false             # 识别结果订阅的开关
+stream_addr = "127.0.0.1:7590"     # 订阅地址：回环 host:port 或 "unix:~/.../asr.sock"
 gain = 0                           # 麦克风增益
 app_key = "your-app-key"
 access_key = "your-access-key"
@@ -290,7 +291,7 @@ hotkeys = []                       # 调试插件额外注册的热键
 
 **它也能用热键开关**：`[voice.continuous] hotkey` 设一个键，按一下开、再按一下关，跟你现在开关听写一样。区别在于它划的不是一句话的边界，而是整条服务的开关，所以只有切换、没有「按住」——没人会按着一个键开完一场会，而且句子边界已经有静音门控在做。按键只改**当前运行状态**，不写配置文件；之后在设置里改 `enabled` 会盖过按键的选择（显式指令优先），不动它的重载则不会。这个键不能和听写热键重复，设置窗口和 TUI 保存时就拒绝。
 
-它归 `[voice] enabled` 管：关掉语音输入（包括托盘面板的“语音输入”开关）会同时停掉持续转写并注销它的热键；识别结果订阅服务只看 `stream_addr`，不受影响。
+它归 `[voice] enabled` 管：关掉语音输入（包括托盘面板的“语音输入”开关）会同时停掉持续转写并注销它的热键；识别结果订阅服务只看 `stream_enabled`，不受影响。
 
 旧配置里的 `mode = "continuous"` 会自动迁移：`[voice.continuous] enabled = true`，`device` 搬到那一路，并且**清掉热键**——那份配置本来就不注册热键，迁完凭空多出一路能往输入框打字的听写才是意外。热键留空 = 不听写，这是转写专用实例的正常配法。
 
@@ -301,6 +302,7 @@ hotkeys = []                       # 调试插件额外注册的热键
 ```toml
 [voice]
 push_to_talk = ""                  # 只做转写服务：没有热键就不听写
+stream_enabled = true
 stream_addr = "127.0.0.1:7590"
 
 [voice.continuous]
@@ -311,7 +313,11 @@ device = "BlackHole 2ch"
 enabled = false                    # 不需要刘海提示时关闭浮层
 ```
 
-**识别结果订阅**：设置 `stream_addr`（设置窗口和 TUI 里都能改，并实时显示监听地址与当前订阅者数）后，Just Talk 在 `/asr` 提供 WebSocket 订阅。修改配置时只有地址变化才会重启服务。地址有两种写法：
+**识别结果订阅**：打开 `stream_enabled` 后，Just Talk 在 `stream_addr`（默认 `127.0.0.1:7590`）的 `/asr` 提供 WebSocket 订阅。设置窗口里它是单独的「识别结果订阅」分组：一个开关加监听地址，下面实时显示监听中 / 未启动 / 已关闭和当前订阅者数；TUI 里是「结果订阅」和「订阅地址」两项。开关和地址分开：关掉不会清掉地址，开着却没填地址时保存会被拒绝。修改配置时只有开关或地址变了才会重启服务。
+
+旧配置没有 `stream_enabled`，那时地址就是开关：写了非空的 `stream_addr` 的，升级后开关自动打开，订阅照常；没写或留空的，开关为关，地址补上默认值。
+
+地址有两种写法：
 
 | 写法 | 谁连得上 | 代价 |
 |---|---|---|

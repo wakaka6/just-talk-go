@@ -373,8 +373,8 @@ func (p *VoicePlugin) publishASRResult(sessionID uint64, client speech.StreamSes
 }
 
 // syncStreamServerLocked (re)starts the subscription server when the address
-// changes; an empty address stops it. A bad address is logged and leaves the
-// server off until the next config reload retries it.
+// changes; an empty address (the switch is off) stops it. A bad address is
+// logged and leaves the server off until the next config reload retries it.
 func (p *VoicePlugin) syncStreamServerLocked(addr string) {
 	addr = strings.TrimSpace(addr)
 	if addr == p.streamAddr && (p.stream != nil || addr == "") {
@@ -428,13 +428,18 @@ func StreamStatus() (url string, subscribers int) {
 	return srv.URL(), srv.subscriberCount()
 }
 
-// CheckStreamAddr reports whether addr can be used for [voice] stream_addr.
-// The UIs call it so a bad address fails on save instead of silently
-// leaving the server off.
-func CheckStreamAddr(addr string) error {
-	if strings.TrimSpace(addr) == "" {
+// CheckStream reports whether [voice] stream_enabled and stream_addr can be
+// saved together. The UIs call it so a bad address fails on save instead of
+// silently leaving the server off. An address is checked even with the switch
+// off, so turning it on later cannot fail on a typo made now.
+func CheckStream(enabled bool, addr string) error {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		if enabled {
+			return errors.New("打开识别结果订阅需要填写地址，如 " + config.DefaultStreamAddr)
+		}
 		return nil
 	}
-	_, _, err := streamListen(strings.TrimSpace(addr))
+	_, _, err := streamListen(addr)
 	return err
 }

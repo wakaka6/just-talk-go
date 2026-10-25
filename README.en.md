@@ -219,7 +219,8 @@ language = "zh-CN"
 text_output = "paste"              # where recognized text goes: paste | clipboard | none
 stop_delay_ms = 0                  # release delay in hold mode
 device = ""                        # recording device (empty = default; macOS matches device UID or name)
-stream_addr = ""                   # subscription address: "127.0.0.1:7590" or "unix:~/.../asr.sock" (empty = off)
+stream_enabled = false             # switch for the result subscription
+stream_addr = "127.0.0.1:7590"     # subscription address: loopback host:port or "unix:~/.../asr.sock"
 gain = 0                           # microphone gain
 app_key = "your-app-key"
 access_key = "your-access-key"
@@ -289,7 +290,7 @@ This path has no finger on a key: in dictation a person decides where a sentence
 
 **It has a hotkey too**: bind one in `[voice.continuous] hotkey` and press it to start the service, press it again to stop — the same way you switch dictation on and off. The difference is what the key bounds: a whole service rather than a sentence, so it only toggles and there is no hold — nobody holds a key down for an entire meeting, and sentence boundaries are the silence gate's job anyway. The key changes the **running state** only; it never writes the config file. Editing `enabled` in the settings afterwards overrides what the key chose (an explicit instruction wins), while a reload that leaves the setting alone leaves the key's choice alone. It cannot be the same combo as a dictation hotkey; the settings window and the TUI refuse to save that.
 
-It answers to `[voice] enabled`: turning voice input off (including the “语音输入” switch in the tray panel) also stops continuous transcription and unregisters its hotkey. The subscription server depends only on `stream_addr` and keeps running.
+It answers to `[voice] enabled`: turning voice input off (including the “语音输入” switch in the tray panel) also stops continuous transcription and unregisters its hotkey. The subscription server depends only on `stream_enabled` and keeps running.
 
 An old `mode = "continuous"` migrates on load: `[voice.continuous] enabled = true`, the `device` moves to that path, and **the hotkey is cleared** — that config registered no hotkey, so inventing a dictation that types into the focused window would be the surprise. No hotkey means no dictation, which is how a transcription-only instance is configured.
 
@@ -300,6 +301,7 @@ This path **never** types, pastes or touches the clipboard; results go only to t
 ```toml
 [voice]
 push_to_talk = ""                  # service only: no hotkey means no dictation
+stream_enabled = true
 stream_addr = "127.0.0.1:7590"
 
 [voice.continuous]
@@ -310,7 +312,11 @@ device = "BlackHole 2ch"
 enabled = false                    # turn the overlay off if you don't want the notch indicator
 ```
 
-**Recognition result subscription**: with `stream_addr` set (editable in the settings window and the TUI, both of which show the listening address and how many subscribers are connected), Just Talk serves a WebSocket at `/asr`. A config reload restarts the server only when the address changes. The address comes in two kinds:
+**Recognition result subscription**: with `stream_enabled` on, Just Talk serves a WebSocket at `/asr` on `stream_addr` (default `127.0.0.1:7590`). The settings window gives it its own “识别结果订阅” group: a switch plus the listening address, with a live line below saying listening / not started / off and how many subscribers are connected; the TUI has “结果订阅” and “订阅地址”. The switch and the address are separate: turning it off keeps the address, and saving it on with no address is rejected. A config reload restarts the server only when the switch or the address changes.
+
+Older configs have no `stream_enabled`; the address was the switch then. A non-empty `stream_addr` turns the switch on after the upgrade, so the subscription keeps running; a missing or empty one leaves it off and fills in the default address.
+
+The address comes in two kinds:
 
 | Address | Who can connect | Cost |
 |---|---|---|

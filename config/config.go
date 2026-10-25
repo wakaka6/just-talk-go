@@ -43,8 +43,10 @@ type VoiceConfig struct {
 	TextOutput string `toml:"text_output"`
 	// AutoSubmit 旧版开关，仅用于迁移到 TextOutput；迁移后置空，存盘时不再写出。
 	AutoSubmit *bool `toml:"auto_submit,omitempty"`
-	// StreamAddr 非空时在该回环地址开启 WebSocket 订阅服务（路径 /asr），
-	// 向订阅者推送会话事件与每条识别结果；空 = 关闭。
+	// StreamEnabled 开关识别结果订阅服务：WebSocket（路径 /asr），向订阅者推送
+	// 持续转写的会话事件与每条识别结果。开关和地址分开，地址不再兼做开关。
+	StreamEnabled bool `toml:"stream_enabled"`
+	// StreamAddr 订阅服务监听的地址：回环 host:port，或 unix:<path>。
 	StreamAddr string `toml:"stream_addr"`
 	// Engine 语音引擎类型；留空时使用默认引擎。
 	Engine string `toml:"engine"`
@@ -87,6 +89,9 @@ const (
 	// OutputNone 不输出：只转写，结果只进日志和浮层（听写不进识别结果订阅）。
 	OutputNone = "none"
 )
+
+// DefaultStreamAddr 是订阅服务的默认地址：打开开关就能用，不必先想一个端口。
+const DefaultStreamAddr = "127.0.0.1:7590"
 
 // ValidTextOutput 报告 v 是否是合法的输出去向。
 func ValidTextOutput(v string) bool {
@@ -162,6 +167,7 @@ func Default() *Config {
 		Voice: VoiceConfig{
 			Enabled: true, Mode: ModeToggle, PushToTalk: "Alt+Super",
 			Language: "zh-CN", TextOutput: OutputPaste, ResourceID: "volc.bigasr.sauc.duration",
+			StreamAddr: DefaultStreamAddr,
 			Continuous: ContinuousConfig{SilenceGate: true},
 		},
 		Overlay: OverlayConfig{
@@ -200,7 +206,21 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.Voice.migrateOutput(md.IsDefined("voice", "text_output"))
 	cfg.Voice.migrateContinuous()
+	cfg.Voice.migrateStream(md.IsDefined("voice", "stream_enabled"), md.IsDefined("voice", "stream_addr"))
 	return cfg, nil
+}
+
+// migrateStream 给没有 stream_enabled 的旧配置补上开关：那时地址就是开关，
+// 写了地址 = 开着，升级不能让订阅悄悄停掉。地址留空的补上默认地址，
+// 之后只拨开关就能用。
+func (vc *VoiceConfig) migrateStream(explicitEnabled, explicitAddr bool) {
+	vc.StreamAddr = strings.TrimSpace(vc.StreamAddr)
+	if !explicitEnabled {
+		vc.StreamEnabled = explicitAddr && vc.StreamAddr != ""
+	}
+	if vc.StreamAddr == "" {
+		vc.StreamAddr = DefaultStreamAddr
+	}
 }
 
 // migrateContinuous 把旧的 mode = "continuous" 换成 [voice.continuous]。

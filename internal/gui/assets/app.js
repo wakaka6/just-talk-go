@@ -67,6 +67,7 @@ function applyState(state) {
   $("configPath").title = state.configPath;
   form.elements.enabled.checked = draft.enabled;
   form.elements.continuousEnabled.checked = draft.continuousEnabled;
+  form.elements.streamEnabled.checked = draft.streamEnabled;
   for (const name of ["pushToTalk", "continuousHotkey", "stopDelayMs", "streamAddr"]) form.elements[name].value = draft[name];
   $("textOutput").replaceChildren(...state.textOutputs.map((o) => el("option", { value: o }, OUTPUT_LABELS[o] || o)));
   $("textOutput").value = draft.textOutput;
@@ -576,6 +577,7 @@ function readForm() {
   draft.continuousHotkey = form.elements.continuousHotkey.value;
   draft.textOutput = form.elements.textOutput.value;
   draft.hotwordsFile = form.elements.hotwordsFile.value.trim();
+  draft.streamEnabled = form.elements.streamEnabled.checked;
   draft.streamAddr = form.elements.streamAddr.value.trim();
   draft.language = form.elements.language.value;
   draft.stopDelayMs = Number.parseInt(form.elements.stopDelayMs.value, 10) || 0;
@@ -721,9 +723,9 @@ function renderStatus({ status, stats, logs }) {
   // The server only starts after a save, so say what it is actually doing.
   const [streamClass, streamText] = status.streamUrl
     ? ["ok", `监听中 ${status.streamUrl} · ${status.streamSubscribers} 个订阅者`]
-    : draft && draft.streamAddr
+    : draft && draft.streamEnabled
       ? ["missing", "未启动：保存后生效；地址被占用时见日志"]
-      : ["off", "未开启：填上地址并保存后开始监听"];
+      : ["off", "已关闭"];
   $("streamState").className = `field-note state ${streamClass}`;
   $("streamState").textContent = streamText;
 
