@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -133,6 +137,94 @@ func TestStreamServerSubscribersAreInvisibleToEachOther(t *testing.T) {
 		readJSON(t, ctx, first, &asr)
 		if asr.Type != "asr" || asr.Text != want {
 			t.Fatalf("frame = %+v, want asr %q", asr, want)
+		}
+	}
+}
+
+// While nobody is talking the stream is silent, so a subscriber that just
+// connected is told what the service is doing before anything else.
+func TestSubscriberIsToldTheServiceStateFirst(t *testing.T) {
+	srv, err := newStreamServer("127.0.0.1:0", discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	srv.setSnapshot(func() any {
+		return streamServiceEvent{Type: "service", State: serviceListening, Device: "BlackHole 2ch", Gate: true}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws://"+srv.Addr()+streamPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	waitForSubscribers(t, srv, 1)
+	srv.broadcast(newSessionStartEvent("jt-1"))
+
+	var got streamServiceEvent
+	readJSON(t, ctx, conn, &got)
+	if got.Type != "service" || got.State != serviceListening || got.Device != "BlackHole 2ch" || !got.Gate {
+		t.Fatalf("first frame = %+v, want the service snapshot", got)
+	}
+	// And it really is first: the broadcast comes after it.
+	var next streamSessionEvent
+	readJSON(t, ctx, conn, &next)
+	if next != newSessionStartEvent("jt-1") {
+		t.Fatalf("second frame = %+v, want the broadcast", next)
+	}
+}
+
+// A Unix socket names the instance by path and lets only its owner listen.
+func TestStreamServerOnUnixSocket(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "asr.sock")
+	srv, err := newStreamServer("unix:"+path, discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	if want := "unix:" + path; srv.URL() != want {
+		t.Fatalf("URL = %q, want %q", srv.URL(), want)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("socket mode = %o, want 600: anyone else could listen in", perm)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client := &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", path)
+		},
+	}}
+	conn, _, err := websocket.Dial(ctx, "ws://socket"+streamPath, &websocket.DialOptions{HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	waitForSubscribers(t, srv, 1)
+	srv.broadcast(newSessionStartEvent("jt-1"))
+	var got streamSessionEvent
+	readJSON(t, ctx, conn, &got)
+	if got != newSessionStartEvent("jt-1") {
+		t.Fatalf("frame over the socket = %+v", got)
+	}
+}
+
+func TestCheckStreamAddrAcceptsBothKinds(t *testing.T) {
+	for _, addr := range []string{"127.0.0.1:7590", "localhost:0", "unix:/tmp/jt.sock", "unix:~/jt.sock"} {
+		if err := CheckStreamAddr(addr); err != nil {
+			t.Fatalf("CheckStreamAddr(%q) = %v, want accepted", addr, err)
+		}
+	}
+	for _, addr := range []string{"0.0.0.0:7590", "192.168.1.5:7590", "unix:", "7590"} {
+		if err := CheckStreamAddr(addr); err == nil {
+			t.Fatalf("CheckStreamAddr(%q) was accepted", addr)
 		}
 	}
 }

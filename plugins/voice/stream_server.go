@@ -8,12 +8,14 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
 
+	"github.com/c/just-talk-go/config"
 	"github.com/c/just-talk-go/internal/speech"
 )
 
@@ -40,6 +42,27 @@ type streamSessionEvent struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
+// streamServiceEvent tells subscribers what the transcription service is
+// doing, which is the only way to tell "listening, nobody is talking" from
+// "not running" while the stream is quiet. It carries the service's own
+// state — the same for everyone — never anything about other subscribers,
+// and never where Just Talk puts dictated text: not a subscriber's business.
+type streamServiceEvent struct {
+	Type   string `json:"type"`
+	State  string `json:"state"`
+	Device string `json:"device,omitempty"`
+	Engine string `json:"engine,omitempty"`
+	Gate   bool   `json:"gate"`
+}
+
+// Service states.
+const (
+	// serviceListening means capture is open: speech will be transcribed.
+	serviceListening = "listening"
+	// serviceIdle means the service is off or capture is down.
+	serviceIdle = "idle"
+)
+
 type streamASREvent struct {
 	Type       string             `json:"type"`
 	Session    string             `json:"session"`
@@ -64,6 +87,24 @@ func newASREvent(session, text string, utterances []speech.Utterance, final bool
 	return streamASREvent{Type: "asr", Session: session, Text: text, Utterances: utterances, Final: final}
 }
 
+// streamListen splits stream_addr into something net.Listen understands.
+// "unix:<path>" listens on a Unix socket, which names the instance by path
+// and limits who may subscribe to the owner; anything else is host:port on
+// loopback, which any local program (and a browser page) can reach.
+func streamListen(addr string) (network, target string, err error) {
+	if path, ok := strings.CutPrefix(addr, "unix:"); ok {
+		path = config.ExpandPath(strings.TrimSpace(path))
+		if path == "" {
+			return "", "", fmt.Errorf("stream_addr %q 缺少 socket 路径", addr)
+		}
+		return "unix", path, nil
+	}
+	if err := checkLoopbackAddr(addr); err != nil {
+		return "", "", err
+	}
+	return "tcp", addr, nil
+}
+
 // checkLoopbackAddr rejects listen addresses that are not loopback-only:
 // transcripts must never be reachable from the network.
 func checkLoopbackAddr(addr string) error {
@@ -84,11 +125,13 @@ func checkLoopbackAddr(addr string) error {
 // subscribers. It outlives sessions; broadcast never blocks.
 //
 // Subscribers are invisible to each other, and that must stay true: a
-// connection only ever carries frames from broadcast (ASR results, identical
-// for everyone), never anything addressed to one subscriber, nor how many
-// others are connected. Per-connection state stays on streamSubscriber. If
-// per-subscriber filtering or commands are ever added, they belong on that
-// struct and must be applied on that connection's write path alone.
+// connection carries broadcast frames (ASR results, identical for everyone)
+// plus, on connect, one snapshot of the service's own state — the same
+// snapshot anyone connecting at that moment would get. Never anything
+// addressed to one subscriber, and never how many others are connected.
+// Per-connection state stays on streamSubscriber. If per-subscriber
+// filtering or commands are ever added, they belong on that struct and must
+// be applied on that connection's write path alone.
 type streamServer struct {
 	logger *slog.Logger
 	srv    *http.Server
@@ -98,6 +141,10 @@ type streamServer struct {
 	mu     sync.Mutex
 	subs   map[*streamSubscriber]struct{}
 	closed bool
+	// snapshot describes the service to a subscriber that just connected.
+	snapshot func() any
+	// display is what a subscriber should connect to, for the UIs and logs.
+	display string
 }
 
 type streamSubscriber struct {
@@ -107,20 +154,36 @@ type streamSubscriber struct {
 }
 
 func newStreamServer(addr string, logger *slog.Logger) (*streamServer, error) {
-	if err := checkLoopbackAddr(addr); err != nil {
+	network, target, err := streamListen(addr)
+	if err != nil {
 		return nil, err
 	}
-	ln, err := net.Listen("tcp", addr)
+	if network == "unix" {
+		if err := clearStaleSocket(target); err != nil {
+			return nil, err
+		}
+	}
+	ln, err := net.Listen(network, target)
 	if err != nil {
 		return nil, fmt.Errorf("listen %s: %w", addr, err)
 	}
+	display := "ws://" + ln.Addr().String() + streamPath
+	if network == "unix" {
+		// Only the owner may subscribe: this is the whole point of the socket.
+		if err := os.Chmod(target, 0o600); err != nil {
+			ln.Close()
+			return nil, fmt.Errorf("chmod %s: %w", target, err)
+		}
+		display = "unix:" + target
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &streamServer{
-		logger: logger,
-		ln:     ln,
-		ctx:    ctx,
-		cancel: cancel,
-		subs:   make(map[*streamSubscriber]struct{}),
+		logger:  logger,
+		ln:      ln,
+		ctx:     ctx,
+		cancel:  cancel,
+		subs:    make(map[*streamSubscriber]struct{}),
+		display: display,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(streamPath, s.handle)
@@ -135,6 +198,31 @@ func newStreamServer(addr string, logger *slog.Logger) (*streamServer, error) {
 
 // Addr returns the bound address (useful when addr used port 0).
 func (s *streamServer) Addr() string { return s.ln.Addr().String() }
+
+// URL is where a subscriber connects, for logs and the settings UIs.
+func (s *streamServer) URL() string { return s.display }
+
+// setSnapshot installs what a newly connected subscriber is told first.
+func (s *streamServer) setSnapshot(fn func() any) {
+	s.mu.Lock()
+	s.snapshot = fn
+	s.mu.Unlock()
+}
+
+// clearStaleSocket removes a socket file left behind by a crash. A socket
+// something is still listening on is left alone, so a second instance fails
+// loudly instead of stealing the address.
+func clearStaleSocket(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		return nil
+	}
+	conn, err := net.DialTimeout("unix", path, time.Second)
+	if err == nil {
+		conn.Close()
+		return fmt.Errorf("%s 上已经有实例在监听", path)
+	}
+	return os.Remove(path)
+}
 
 // Close stops listening and disconnects every subscriber.
 func (s *streamServer) Close() {
@@ -159,6 +247,16 @@ func (s *streamServer) handle(w http.ResponseWriter, r *http.Request) {
 	sub := &streamSubscriber{
 		frames: make(chan []byte, streamSubscriberBuffer),
 		kicked: make(chan struct{}),
+	}
+	// Queued before the subscriber is registered, so it arrives ahead of
+	// anything broadcast from here on.
+	s.mu.Lock()
+	snapshot := s.snapshot
+	s.mu.Unlock()
+	if snapshot != nil {
+		if frame, err := json.Marshal(snapshot()); err == nil {
+			sub.frames <- frame
+		}
 	}
 	if !s.add(sub) {
 		return
@@ -293,9 +391,10 @@ func (p *VoicePlugin) syncStreamServerLocked(addr string) {
 		pout("❌ 识别结果订阅服务未启动: %v", err)
 		return
 	}
+	srv.setSnapshot(func() any { return p.serviceState() })
 	p.stream = srv
-	p.logger.Info("stream server listening", "url", "ws://"+srv.Addr()+streamPath)
-	pout("\U0001f4e1 识别结果订阅: ws://%s%s", srv.Addr(), streamPath)
+	p.logger.Info("stream server listening", "url", srv.URL())
+	pout("\U0001f4e1 识别结果订阅: %s", srv.URL())
 	publishStreamStatus(srv)
 }
 
@@ -321,7 +420,7 @@ func StreamStatus() (url string, subscribers int) {
 	if srv == nil {
 		return "", 0
 	}
-	return "ws://" + srv.Addr() + streamPath, srv.subscriberCount()
+	return srv.URL(), srv.subscriberCount()
 }
 
 // CheckStreamAddr reports whether addr can be used for [voice] stream_addr.
@@ -331,5 +430,6 @@ func CheckStreamAddr(addr string) error {
 	if strings.TrimSpace(addr) == "" {
 		return nil
 	}
-	return checkLoopbackAddr(strings.TrimSpace(addr))
+	_, _, err := streamListen(strings.TrimSpace(addr))
+	return err
 }

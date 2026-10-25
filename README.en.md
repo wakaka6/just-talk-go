@@ -34,8 +34,9 @@ On displays without a notch (external monitors or notch-less models) the same in
 - Voice hotkeys are restricted to keys suitable for global shortcuts: modifier-only combos, function keys, Tab, CapsLock, arrow and navigation keys. Letters, digits, punctuation, Space, and other text-producing keys are rejected.
 - Doubao large-model streaming ASR (optimized bidirectional streaming plus a second pass) with hotword boosting.
 - Automatic clipboard copy, with optional auto-submit into the focused field.
+- A continuous transcription service: alongside dictation, it transcribes an external source such as a meeting or system audio, cut into sentences by speech, and can be switched by a hotkey. Results go to programs subscribed over a local WebSocket; nothing is typed or copied.
 - Recording overlay: on macOS it expands from the notch and shows live recognized text, mic level, and the final result; Linux (Wayland/X11) and Windows get an always-on-top status capsule.
-- Desktop settings window with a menu bar/tray icon for hotkeys (primary and secondary slots, recorded by clicking a slot and pressing the combo), mode, recognition engine and credentials, auto-submit, stop delay, hotwords, and overlay position — saved changes apply immediately without a restart. The same page opens in a browser with `--web`, and `--tui` keeps the terminal UI.
+- Desktop settings window with a menu bar/tray icon for hotkeys (dictation's primary and secondary slots plus the continuous transcription switch, recorded by clicking a slot and pressing the combo; each slot can be cleared), mode, recognition engine and credentials, output destination, stop delay, hotwords, continuous transcription, the result subscription, and overlay position — saved changes apply immediately without a restart. The same page opens in a browser with `--web`, and `--tui` keeps the terminal UI.
 - Usage statistics: total sessions, recognized characters, average speed, and recent speed.
 - `Esc` cancels a recording; `R` retries after a retryable error.
 
@@ -130,7 +131,7 @@ If the install directory is not on your `PATH`, follow the hint printed by the c
 1. Obtain Doubao large-model ASR credentials (App Key / Access Key).
 2. Run `just-talk --doctor` to check the microphone, clipboard tools, and permissions.
 3. Run `just-talk` to open the settings window, pick a channel under “识别引擎” (Doubao streaming by default), fill in its credentials, and click “保存” (or press `Cmd/Ctrl+S`). Closing the window keeps Just Talk running. Left-click the menu bar/tray icon for a small panel with the live state, the latest transcript, usage statistics, and the current settings, with a “语音输入” switch to turn voice input on or off; its “打开设置” button reopens the settings window. Right-click opens the tray menu. Quit with “退出” in the panel or the tray menu. Prefer the terminal? Run `just-talk --tui`.
-4. Press the `push_to_talk` hotkey (default `Alt+Super`; `Option+Command` on macOS) to start/stop recording. Recognized text is copied to the clipboard and, when `auto_submit` is on, submitted into the focused field.
+4. Press the `push_to_talk` hotkey (default `Alt+Super`; `Option+Command` on macOS) to start/stop recording. `text_output` decides where recognized text goes; by default it is pasted into the focused field.
 
 ### Permissions
 
@@ -157,6 +158,7 @@ If the install directory is not on your `PATH`, follow the hint printed by the c
 | Key | Action |
 | --- | --- |
 | Configured `push_to_talk` | Start/stop recording in `toggle` mode; hold to record in `hold` mode |
+| Configured `[voice.continuous] hotkey` | Turn the continuous transcription service on/off (toggle only, never written to the config); see [Configuration](#configuration) |
 | `Esc` | Cancel the current recording or dismiss an error |
 | `R` | Retry recognition after a retryable error |
 
@@ -217,7 +219,7 @@ language = "zh-CN"
 text_output = "paste"              # where recognized text goes: paste | clipboard | none
 stop_delay_ms = 0                  # release delay in hold mode
 device = ""                        # recording device (empty = default; macOS matches device UID or name)
-stream_addr = ""                   # WebSocket address for recognition results, e.g. "127.0.0.1:7590" (empty = off)
+stream_addr = ""                   # subscription address: "127.0.0.1:7590" or "unix:~/.../asr.sock" (empty = off)
 gain = 0                           # microphone gain
 app_key = "your-app-key"
 access_key = "your-access-key"
@@ -279,13 +281,15 @@ Continuous transcription is not on that axis at all: it transcribes an **externa
 
 The two run **in parallel**, not one instead of the other: listening to an external source does not stop you from dictating with a hotkey at the same time. So they are two groups in the settings — "hotkeys" configures dictation, and "continuous transcription" is a switch plus its own external-source device, rather than a third value in one picker.
 
-**An external word list**: hotwords make recognition fit the words actually being said, but a list inside the config is frozen. `hotwords_file` points at a text file (one word per line, `#` starts a comment, `~` is expanded) whose words are merged with `hotwords`. The list reaches the engine when a session opens, so: in the hotkey modes the next press picks it up; in continuous mode with the silence gate on every utterance is a new session, so the file is reread for each one and an edit applies to the next sentence; with the gate off a session can stay up for tens of minutes, so Just Talk checks the file every 2 seconds and **reconnects once after an edit** to apply it. No config change, no restart. An unreadable file is a warning: recognition continues with `hotwords`.
+**An external word list**: hotwords make recognition fit the words actually being said, but a list inside the config is frozen. `hotwords_file` points at a text file (one word per line, `#` starts a comment, `~` is expanded) whose words are merged with `hotwords`. The list reaches the engine when a session opens, so: dictation picks it up on the next press; continuous transcription with the silence gate on every utterance is a new session, so the file is reread for each one and an edit applies to the next sentence; with the gate off a session can stay up for tens of minutes, so Just Talk checks the file every 2 seconds and **reconnects once after an edit** to apply it. No config change, no restart. An unreadable file is a warning: recognition continues with `hotwords`.
 
 **Continuous transcription**: `[voice.continuous] enabled = true` is for transcribing a meeting or other system audio. It runs **alongside** dictation rather than instead of it: while you hold a hotkey and talk into your microphone, it keeps handing the external source to subscribers in the background. Each path has its own recording device (`[voice] device` is the microphone, `[voice.continuous] device` is usually a loopback one) and its own sessions.
 
 This path has no finger on a key: in dictation a person decides where a sentence starts and ends, and here the **silence gate** (`silence_gate`, on by default) does that job. Speech opens an ASR session; about 1.2 seconds of silence closes it (the final packet is flagged `last`, which asks the engine for its final result). So nothing is sent to the cloud while no one is talking and no session sits idle; the 0.6 seconds of audio captured before the gate opened are sent along, so a sentence never loses its first syllable.
 
-**It has a hotkey too**: bind one in `[voice.continuous] hotkey` and press it to start the service, press it again to stop — the same way you switch dictation on and off. The difference is what the key bounds: a whole service rather than a sentence, so it only toggles and there is no hold — nobody holds a key down for an entire meeting, and sentence boundaries are the silence gate's job anyway. The key changes the **running state** only; it never writes the config file. Editing `enabled` in the settings afterwards overrides what the key chose (an explicit instruction wins), while a reload that leaves the setting alone leaves the key's choice alone. It cannot be the same combo as a dictation hotkey; saving that is rejected.
+**It has a hotkey too**: bind one in `[voice.continuous] hotkey` and press it to start the service, press it again to stop — the same way you switch dictation on and off. The difference is what the key bounds: a whole service rather than a sentence, so it only toggles and there is no hold — nobody holds a key down for an entire meeting, and sentence boundaries are the silence gate's job anyway. The key changes the **running state** only; it never writes the config file. Editing `enabled` in the settings afterwards overrides what the key chose (an explicit instruction wins), while a reload that leaves the setting alone leaves the key's choice alone. It cannot be the same combo as a dictation hotkey; the settings window and the TUI refuse to save that.
+
+It answers to `[voice] enabled`: turning voice input off (including the “语音输入” switch in the tray panel) also stops continuous transcription and unregisters its hotkey. The subscription server depends only on `stream_addr` and keeps running.
 
 An old `mode = "continuous"` migrates on load: `[voice.continuous] enabled = true`, the `device` moves to that path, and **the hotkey is cleared** — that config registered no hotkey, so inventing a dictation that types into the focused window would be the surprise. No hotkey means no dictation, which is how a transcription-only instance is configured.
 
@@ -306,15 +310,27 @@ device = "BlackHole 2ch"
 enabled = false                    # turn the overlay off if you don't want the notch indicator
 ```
 
-**Recognition result subscription**: with `stream_addr` set (editable in the settings window and the TUI, both of which show the listening address and how many subscribers are connected), Just Talk serves a WebSocket at `ws://<stream_addr>/asr`. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is rejected when you save. Browser connections from other origins are rejected. A config reload restarts the server only when the address changes.
+**Recognition result subscription**: with `stream_addr` set (editable in the settings window and the TUI, both of which show the listening address and how many subscribers are connected), Just Talk serves a WebSocket at `/asr`. A config reload restarts the server only when the address changes. The address comes in two kinds:
+
+| Address | Who can connect | Cost |
+|---|---|---|
+| `127.0.0.1:7590` | **any** local program, browsers included | no access control. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is rejected when you save, and browser connections from other origins are rejected |
+| `unix:~/.local/state/just-talk/asr.sock` | **only the owner** (the socket is created 0600) | browsers cannot reach it; a client has to dial a Unix socket; no Windows |
+
+A path also settles identity: a port only tells you something is bound, a socket path tells you which instance. A socket file left behind by a crash is cleaned up; if an instance really is listening on it, startup fails loudly instead of stealing the address.
 
 **Only continuous transcription is published. Your own dictation is not**: dictation is Just Talk typing for you and `text_output` decides where it lands; the subscription is the transcription capability offered to other programs, and it carries the external source. That line matters most when both run in parallel: pressing a hotkey never sends your own words to a subscriber.
 
 **Any number of subscribers, none of them aware of the others**: this is one shared stream of ASR results. No frame is addressed to a particular subscriber and no frame reveals how many others are connected (that count only appears in the settings UI). Each connection has its own buffer, and one that falls behind is disconnected on its own — without slowing down the others or recognition. Subscribers cannot even send anything (inbound frames are read and discarded, only to notice a disconnect). So “filter client-side” means “I only care about the definite sentences”, not “sort someone else’s mail”.
 
+The one exception is **the `service` frame sent on connect**: it describes the service's own state, identical for anyone connecting at that moment, and is nobody else's content.
+
 The server sends JSON text frames only:
 
 ```jsonc
+// sent once on connect, then broadcast whenever it changes; state is listening
+// (capturing, speech will be transcribed) or idle (the service is off or capture died)
+{"type":"service","state":"listening","device":"BlackHole 2ch","engine":"doubao-stream","gate":true}
 // an ASR session connected
 {"type":"session","state":"start","session":"jt-20261024T143352-1"}
 // one per recognition result frame: text is the session's full text so far, utterances are the
@@ -324,6 +340,8 @@ The server sends JSON text frames only:
 // or closed (connection closed, recording stopped, shutdown)
 {"type":"session","state":"end","session":"jt-20261024T143352-1","reason":"closed"}
 ```
+
+While nobody is talking the stream is silent, so "listening, nobody is speaking" and "the process is not running" look exactly the same on the wire — the `service` frame is what tells them apart, and it says far more than whether a port is bound. It does **not** carry `text_output`: where dictated text lands is none of a subscriber's business.
 
 Publishing never slows recognition down: each subscriber has its own buffer, and a subscriber that falls more than 256 frames behind is disconnected without affecting the others.
 

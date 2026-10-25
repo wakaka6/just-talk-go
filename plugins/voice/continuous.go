@@ -108,6 +108,7 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 		backoff = continuousBackoffMin
 		pout("\U0001f3a4 开始持续录音 (后端: %s)", rec.Backend())
 		continuousRecorder.Store(rec)
+		p.publishServiceState()
 
 		recCtx, recCancel := context.WithCancel(ctx)
 		gate := newSpeechGate(vc.Continuous.SilenceGate, p.logger)
@@ -122,6 +123,7 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 		_, _ = rec.Stop()
 		<-pumpDone
 		continuousRecorder.CompareAndSwap(rec, nil)
+		p.publishServiceState()
 		if ctx.Err() == nil {
 			pout("⚠️  录音中断，正在重新打开")
 			if !sleepContext(ctx, backoff) {
@@ -368,6 +370,31 @@ func (p *VoicePlugin) closeStreamSession(client speech.StreamSession) {
 		p.logger.Warn("continuous: close ASR client timed out")
 	}
 }
+
+// serviceState describes the transcription service for subscribers: while
+// nobody is talking the stream is silent, so this is the only way to tell
+// "listening" from "not running".
+func (p *VoicePlugin) serviceState() streamServiceEvent {
+	p.mu.Lock()
+	var vc config.VoiceConfig
+	if p.cfg != nil {
+		vc = p.cfg.Voice
+	}
+	p.mu.Unlock()
+	ev := streamServiceEvent{
+		Type:   "service",
+		State:  serviceIdle,
+		Device: vc.Continuous.Device,
+		Engine: asrcfg.EngineType(vc),
+		Gate:   vc.Continuous.SilenceGate,
+	}
+	if continuousRecorder.Load() != nil {
+		ev.State = serviceListening
+	}
+	return ev
+}
+
+func (p *VoicePlugin) publishServiceState() { p.streamBroadcast(p.serviceState()) }
 
 // publishContinuousStatus records what the service is doing and shows it only
 // while dictation is idle: the user pressing a key outranks the room.
