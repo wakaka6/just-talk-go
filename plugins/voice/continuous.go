@@ -198,6 +198,13 @@ func (p *VoicePlugin) runContinuousSession(ctx context.Context, vc config.VoiceC
 	pout("✅ ASR 已连接 (持续转写)")
 	p.publishContinuousStatus("recording", "持续转写中")
 	p.publishSessionStart(sessionID)
+	// Hotwords only reach the engine when a session opens; a continuous
+	// session can outlive many edits of the word list.
+	go p.hotwords.watch(sctx, vc, func() {
+		p.logger.Info("hotwords file changed, restarting session")
+		pout("\U0001f501 热词已更新，重连以生效")
+		cancel()
+	})
 
 	sendDone := make(chan struct{})
 	go func() {

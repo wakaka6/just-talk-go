@@ -6,15 +6,20 @@
 package voice
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/c/just-talk-go/config"
 )
+
+// hotwordsPollInterval is how often a running session checks the word list.
+const hotwordsPollInterval = 2 * time.Second
 
 // hotwordsLoader reads [voice] hotwords_file at the start of every session, so
 // another program can keep the word list in step with what is being said. It
@@ -68,6 +73,41 @@ func (l *hotwordsLoader) changed(state string) bool {
 }
 
 func (l *hotwordsLoader) forget() { l.changed("") }
+
+// watch calls onChange once hotwords_file differs from what the session
+// started with. Words are sent when a session opens, and a continuous session
+// can stay up for a long time, so the session has to be restarted for an
+// edit to reach the engine.
+func (l *hotwordsLoader) watch(ctx context.Context, vc config.VoiceConfig, onChange func()) {
+	path := strings.TrimSpace(vc.HotwordsFile)
+	if path == "" {
+		return
+	}
+	full := config.ExpandPath(path)
+	started := fileStamp(full)
+	ticker := time.NewTicker(hotwordsPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if fileStamp(full) != started {
+				onChange()
+				return
+			}
+		}
+	}
+}
+
+// fileStamp identifies a version of the file; a missing file is a version too.
+func fileStamp(path string) string {
+	st, err := os.Stat(path)
+	if err != nil {
+		return "missing"
+	}
+	return fmt.Sprintf("%d:%d", st.ModTime().UnixNano(), st.Size())
+}
 
 func dedupeWords(words []string) []string {
 	out := make([]string, 0, len(words))
