@@ -330,19 +330,20 @@ func waveInError(action string, code uint32) error {
 	return fmt.Errorf("%s: winmm error %d", action, code)
 }
 
-// ListDevices returns Windows audio input devices exposed by winmm.
-func ListDevices() ([]string, error) {
-	devices := []string{"default"}
+// ListDevices returns the capture devices winmm exposes. winmm cannot capture
+// playback, so none of them is a loopback device.
+func ListDevices() ([]InputDevice, error) {
 	count := waveInDeviceCount()
-	for id := uint32(0); id < count; id++ {
+	if count == 0 {
+		return nil, fmt.Errorf("no Windows microphone input device was found")
+	}
+	devices := make([]InputDevice, 0, count)
+	for id := range count {
 		name, err := waveInDeviceName(id)
 		if err != nil {
 			continue
 		}
-		devices = append(devices, name)
-	}
-	if count == 0 {
-		return nil, fmt.Errorf("no Windows microphone input device was found")
+		devices = append(devices, InputDevice{Name: name, Kind: DeviceMic})
 	}
 	return devices, nil
 }

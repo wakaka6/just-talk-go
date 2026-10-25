@@ -40,32 +40,38 @@ func (r *darwinAudioReadCloser) Close() error {
 	return nil
 }
 
-// inputDevice is one CoreAudio device with input streams.
-type inputDevice struct {
-	UID  string
-	Name string
-}
-
-func listInputDevices() ([]inputDevice, error) {
+func listInputDevices() ([]InputDevice, error) {
 	buf := make([]C.jt_audio_device_t, maxInputDevices)
 	n := int(C.jt_audio_list_input_devices(&buf[0], C.int(len(buf))))
 	if n < 0 {
 		return nil, fmt.Errorf("CoreAudio: cannot read device list")
 	}
 	n = min(n, len(buf))
-	devices := make([]inputDevice, 0, n)
+	devices := make([]InputDevice, 0, n)
 	for i := range n {
-		devices = append(devices, inputDevice{
+		devices = append(devices, InputDevice{
 			UID:  C.GoString(&buf[i].uid[0]),
 			Name: C.GoString(&buf[i].name[0]),
+			Kind: deviceKind(buf[i].kind),
 		})
 	}
 	return devices, nil
 }
 
+func deviceKind(kind C.int) string {
+	switch kind {
+	case C.JT_DEVICE_MIC:
+		return DeviceMic
+	case C.JT_DEVICE_LOOPBACK:
+		return DeviceLoopback
+	default:
+		return DeviceUnknown
+	}
+}
+
 // matchInputDevice picks the device whose UID equals want exactly, else the
 // first whose name equals want ignoring case.
-func matchInputDevice(devices []inputDevice, want string) (inputDevice, bool) {
+func matchInputDevice(devices []InputDevice, want string) (InputDevice, bool) {
 	for _, d := range devices {
 		if d.UID != "" && d.UID == want {
 			return d, true
@@ -76,15 +82,7 @@ func matchInputDevice(devices []inputDevice, want string) (inputDevice, bool) {
 			return d, true
 		}
 	}
-	return inputDevice{}, false
-}
-
-func inputDeviceNames(devices []inputDevice) []string {
-	names := make([]string, 0, len(devices))
-	for _, d := range devices {
-		names = append(names, d.Name)
-	}
-	return names
+	return InputDevice{}, false
 }
 
 // resolveDeviceUID maps the configured device to a CoreAudio UID. Empty or
@@ -101,11 +99,11 @@ func resolveDeviceUID(logger *slog.Logger, device string) (string, error) {
 	}
 	d, ok := matchInputDevice(devices, device)
 	if !ok {
-		names := inputDeviceNames(devices)
+		names := DeviceNames(devices)
 		logger.Error("audio input device not found", "device", device, "available", names)
 		return "", fmt.Errorf("未找到音频输入设备 %q；可用输入设备: %s", device, strings.Join(names, ", "))
 	}
-	logger.Info("audio input device selected", "name", d.Name, "uid", d.UID)
+	logger.Info("audio input device selected", "name", d.Name, "uid", d.UID, "kind", d.Kind)
 	return d.UID, nil
 }
 
@@ -144,11 +142,6 @@ func startCaptureWithDevice(logger *slog.Logger, device string) (io.ReadCloser, 
 	return closer, "coreaudio", stop, nil
 }
 
-// ListDevices returns "default" followed by the names of all input devices.
-func ListDevices() ([]string, error) {
-	devices, err := listInputDevices()
-	if err != nil {
-		return nil, err
-	}
-	return append([]string{"default"}, inputDeviceNames(devices)...), nil
-}
+// ListDevices returns every CoreAudio device with input streams. The system
+// default input is not listed: an empty device setting selects it.
+func ListDevices() ([]InputDevice, error) { return listInputDevices() }

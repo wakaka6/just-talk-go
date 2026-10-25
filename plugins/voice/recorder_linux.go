@@ -29,20 +29,35 @@ func errNoBackend(candidates []candidate) error {
 	return fmt.Errorf("no recording backend found; install alsa-utils for arecord")
 }
 
-// ListDevices returns available audio input devices.
-func ListDevices() ([]string, error) {
+// ListDevices returns the capture devices arecord knows about. A
+// PulseAudio/PipeWire monitor source records what the computer plays.
+func ListDevices() ([]InputDevice, error) {
 	if al, err := exec.LookPath("arecord"); err == nil {
 		cmd := exec.Command(al, "-L")
 		out, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("arecord list input devices: %w", err)
 		}
-		devices := parseALSADevices(string(out))
-		if len(devices) > 0 {
+		if names := parseALSADevices(string(out)); len(names) > 0 {
+			devices := make([]InputDevice, 0, len(names))
+			for _, name := range names {
+				devices = append(devices, InputDevice{Name: name, Kind: alsaDeviceKind(name)})
+			}
 			return devices, nil
 		}
 	}
 	return nil, fmt.Errorf("no input devices found; install alsa-utils for arecord")
+}
+
+func alsaDeviceKind(name string) string {
+	switch {
+	case strings.Contains(name, ".monitor"):
+		return DeviceLoopback
+	case strings.HasPrefix(name, "default"):
+		return DeviceUnknown
+	default:
+		return DeviceMic
+	}
 }
 
 func parseALSADevices(output string) []string {

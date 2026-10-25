@@ -27,7 +27,7 @@ var (
 
 type backendMsg hotkey.ProviderInfo
 type devMsg struct {
-	Devices []string
+	Devices []voice.InputDevice
 	Error   error
 }
 type fieldType int
@@ -60,7 +60,7 @@ type Model struct {
 	ready       bool
 	info        hotkey.ProviderInfo
 	logs        []string
-	devices     []string
+	devices     []voice.InputDevice
 	cfg         *config.Config
 	debug       bool
 	showLogs    bool

@@ -5,9 +5,9 @@ package voice
 import "testing"
 
 func TestMatchInputDevice(t *testing.T) {
-	devices := []inputDevice{
-		{UID: "BuiltInMicrophoneDevice", Name: "MacBook Pro Microphone"},
-		{UID: "BlackHole2ch_UID", Name: "BlackHole 2ch"},
+	devices := []InputDevice{
+		{UID: "BuiltInMicrophoneDevice", Name: "MacBook Pro Microphone", Kind: DeviceMic},
+		{UID: "BlackHole2ch_UID", Name: "BlackHole 2ch", Kind: DeviceLoopback},
 	}
 	cases := []struct {
 		want, uid string

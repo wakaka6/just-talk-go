@@ -61,12 +61,27 @@ static int jt_copy_cstring_prop(AudioObjectID dev, AudioObjectPropertySelector s
 	return ok ? 1 : 0;
 }
 
-static int jt_has_input_streams(AudioObjectID dev) {
-	AudioObjectPropertyAddress addr = {kAudioDevicePropertyStreams, kAudioObjectPropertyScopeInput,
-					   kAudioObjectPropertyElementMain};
+static int jt_has_streams(AudioObjectID dev, AudioObjectPropertyScope scope) {
+	AudioObjectPropertyAddress addr = {kAudioDevicePropertyStreams, scope, kAudioObjectPropertyElementMain};
 	UInt32 size = 0;
 	if (AudioObjectGetPropertyDataSize(dev, &addr, 0, NULL, &size) != noErr) return 0;
 	return size > 0;
+}
+
+// A virtual or aggregate device that also plays audio is a loopback cable:
+// apps play into its output and we record its input. Everything else that
+// reports a real transport (built-in, USB, Bluetooth…) is a microphone.
+static int jt_device_kind(AudioObjectID dev) {
+	AudioObjectPropertyAddress addr = {kAudioDevicePropertyTransportType, kAudioObjectPropertyScopeGlobal,
+					   kAudioObjectPropertyElementMain};
+	UInt32 transport = 0;
+	UInt32 size = sizeof(transport);
+	if (AudioObjectGetPropertyData(dev, &addr, 0, NULL, &size, &transport) != noErr) return JT_DEVICE_UNKNOWN;
+	if (transport == kAudioDeviceTransportTypeVirtual || transport == kAudioDeviceTransportTypeAggregate) {
+		return jt_has_streams(dev, kAudioObjectPropertyScopeOutput) ? JT_DEVICE_LOOPBACK : JT_DEVICE_UNKNOWN;
+	}
+	if (transport == kAudioDeviceTransportTypeUnknown) return JT_DEVICE_UNKNOWN;
+	return JT_DEVICE_MIC;
 }
 
 int jt_audio_list_input_devices(jt_audio_device_t *out, int cap) {
@@ -86,10 +101,11 @@ int jt_audio_list_input_devices(jt_audio_device_t *out, int cap) {
 
 	int found = 0;
 	for (UInt32 i = 0; i < count; i++) {
-		if (!jt_has_input_streams(ids[i])) continue;
+		if (!jt_has_streams(ids[i], kAudioObjectPropertyScopeInput)) continue;
 		if (found < cap) {
 			jt_copy_cstring_prop(ids[i], kAudioDevicePropertyDeviceUID, out[found].uid, sizeof(out[found].uid));
 			jt_copy_cstring_prop(ids[i], kAudioObjectPropertyName, out[found].name, sizeof(out[found].name));
+			out[found].kind = jt_device_kind(ids[i]);
 		}
 		found++;
 	}
