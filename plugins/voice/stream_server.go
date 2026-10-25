@@ -273,6 +273,7 @@ func (p *VoicePlugin) syncStreamServerLocked(addr string) {
 	if p.stream != nil {
 		p.stream.Close()
 		p.stream = nil
+		publishStreamStatus(nil)
 		p.logger.Info("stream server stopped", "addr", p.streamAddr)
 	}
 	p.streamAddr = addr
@@ -287,5 +288,41 @@ func (p *VoicePlugin) syncStreamServerLocked(addr string) {
 	}
 	p.stream = srv
 	p.logger.Info("stream server listening", "url", "ws://"+srv.Addr()+streamPath)
-	pout("📡 识别结果订阅: ws://%s%s", srv.Addr(), streamPath)
+	pout("\U0001f4e1 识别结果订阅: ws://%s%s", srv.Addr(), streamPath)
+	publishStreamStatus(srv)
+}
+
+// liveStream is the running subscription server, for the settings UIs. The
+// engine loads one voice plugin, so a package-level handle is enough.
+var (
+	liveStreamMu sync.Mutex
+	liveStream   *streamServer
+)
+
+func publishStreamStatus(srv *streamServer) {
+	liveStreamMu.Lock()
+	liveStream = srv
+	liveStreamMu.Unlock()
+}
+
+// StreamStatus reports the subscription server: the URL subscribers connect
+// to (empty when it is off) and how many are connected right now.
+func StreamStatus() (url string, subscribers int) {
+	liveStreamMu.Lock()
+	srv := liveStream
+	liveStreamMu.Unlock()
+	if srv == nil {
+		return "", 0
+	}
+	return "ws://" + srv.Addr() + streamPath, srv.subscriberCount()
+}
+
+// CheckStreamAddr reports whether addr can be used for [voice] stream_addr.
+// The UIs call it so a bad address fails on save instead of silently
+// leaving the server off.
+func CheckStreamAddr(addr string) error {
+	if strings.TrimSpace(addr) == "" {
+		return nil
+	}
+	return checkLoopbackAddr(strings.TrimSpace(addr))
 }

@@ -101,6 +101,13 @@
             <span class="label">提示位置<small>录音状态提示显示在屏幕上的位置；刘海在其他平台按顶部居中处理</small></span>
             <select name="overlayPosition" id="overlayPosition"></select>
           </label>
+          <div class="row device-row">
+            <span class="label">识别结果订阅<small>在本机开一个 WebSocket，别的程序可以实时订阅每一条识别结果（含分句与已确定标记）。可同时连多个订阅者；只允许回环地址，留空关闭</small></span>
+            <div class="stack">
+              <input type="text" name="streamAddr" id="streamAddr" spellcheck="false" placeholder="127.0.0.1:7590">
+              <p id="streamState" class="field-note"></p>
+            </div>
+          </div>
         </div>
       </section>
 

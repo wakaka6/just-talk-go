@@ -98,6 +98,7 @@ type settingsJSON struct {
 	StopDelayMs     int      `json:"stopDelayMs"`
 	Hotwords        []string `json:"hotwords"`
 	HotwordsFile    string   `json:"hotwordsFile"`
+	StreamAddr      string   `json:"streamAddr"`
 	OverlayPosition string   `json:"overlayPosition"`
 	Engine          string   `json:"engine"`
 	// EngineConfigs carries only the engines whose fields the page edited.
@@ -169,6 +170,7 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 			StopDelayMs:     vc.StopDelayMs,
 			Hotwords:        append([]string{}, vc.Hotwords...),
 			HotwordsFile:    vc.HotwordsFile,
+			StreamAddr:      vc.StreamAddr,
 			OverlayPosition: cfg.Overlay.Position,
 			Engine:          settings.CurrentEngine(vc),
 		},
@@ -198,13 +200,16 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 }
 
 type statusJSON struct {
-	State           string   `json:"state"`
-	Detail          string   `json:"detail"`
-	StopInMs        int64    `json:"stopInMs"`
-	ErrorHoldS      int64    `json:"errorHoldS"`
-	PendingFinishes int      `json:"pendingFinishes"`
-	SessionID       uint64   `json:"sessionId"`
-	Debug           []string `json:"debug,omitempty"`
+	State           string `json:"state"`
+	Detail          string `json:"detail"`
+	StopInMs        int64  `json:"stopInMs"`
+	ErrorHoldS      int64  `json:"errorHoldS"`
+	PendingFinishes int    `json:"pendingFinishes"`
+	SessionID       uint64 `json:"sessionId"`
+	// StreamURL is where subscribers connect; empty when the server is off.
+	StreamURL         string   `json:"streamUrl"`
+	StreamSubscribers int      `json:"streamSubscribers"`
+	Debug             []string `json:"debug,omitempty"`
 }
 
 type statsJSON struct {
@@ -224,6 +229,7 @@ func (s *server) status(w http.ResponseWriter, r *http.Request) {
 		PendingFinishes: vs.PendingFinishes,
 		SessionID:       vs.SessionID,
 	}
+	st.StreamURL, st.StreamSubscribers = voice.StreamStatus()
 	if !vs.StopAt.IsZero() {
 		st.StopInMs = max(vs.StopAt.Sub(now).Milliseconds(), 0)
 	}
@@ -336,6 +342,9 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	if !config.ValidTextOutput(in.TextOutput) {
 		return nil, fmt.Errorf("未知输出去向: %s", in.TextOutput)
 	}
+	if err := voice.CheckStreamAddr(in.StreamAddr); err != nil {
+		return nil, err
+	}
 	if in.StopDelayMs < 0 {
 		return nil, errors.New("停止延迟不能为负数")
 	}
@@ -363,6 +372,7 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	vc.Language = strings.TrimSpace(in.Language)
 	vc.TextOutput = in.TextOutput
 	vc.HotwordsFile = strings.TrimSpace(in.HotwordsFile)
+	vc.StreamAddr = strings.TrimSpace(in.StreamAddr)
 	vc.StopDelayMs = in.StopDelayMs
 	vc.Engine = engine
 	next.Overlay.Position = in.OverlayPosition

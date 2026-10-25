@@ -66,7 +66,7 @@ function applyState(state) {
   $("configPath").textContent = state.configPath;
   $("configPath").title = state.configPath;
   form.elements.enabled.checked = draft.enabled;
-  for (const name of ["pushToTalk", "stopDelayMs", "hotwordsFile"]) form.elements[name].value = draft[name];
+  for (const name of ["pushToTalk", "stopDelayMs", "hotwordsFile", "streamAddr"]) form.elements[name].value = draft[name];
   $("textOutput").replaceChildren(...state.textOutputs.map((o) => el("option", { value: o }, OUTPUT_LABELS[o] || o)));
   $("textOutput").value = draft.textOutput;
   $("language").replaceChildren(...state.languages.map((l) =>
@@ -516,6 +516,7 @@ function readForm() {
   draft.device = form.elements.device.value;
   draft.textOutput = form.elements.textOutput.value;
   draft.hotwordsFile = form.elements.hotwordsFile.value.trim();
+  draft.streamAddr = form.elements.streamAddr.value.trim();
   draft.language = form.elements.language.value;
   draft.stopDelayMs = Number.parseInt(form.elements.stopDelayMs.value, 10) || 0;
   draft.overlayPosition = form.elements.overlayPosition.value;
@@ -657,6 +658,10 @@ function renderStatus({ status, stats, logs }) {
   if (status.debug) parts.push(...status.debug);
   $("statusDetail").textContent = parts.join("  ");
   box.title = parts.join("  ");
+  // The server only starts after a save, so say what it is actually doing.
+  $("streamState").textContent = status.streamUrl
+    ? `监听中 ${status.streamUrl} · ${status.streamSubscribers} 个订阅者`
+    : (draft && draft.streamAddr ? "未启动（保存后生效；地址被占用时见日志）" : "已关闭");
 
   $("statSessions").textContent = stats.sessions.toLocaleString();
   $("statChars").textContent = stats.chars.toLocaleString();
