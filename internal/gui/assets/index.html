@@ -48,24 +48,27 @@
               <p id="deviceError" class="field-error" role="alert" hidden></p>
             </div>
           </div>
+          <div class="row">
+            <span class="label">工作方式<small>听写：你对着电脑说，按热键开始、文字上屏。持续转写：转写会议、系统声音等外部音源，由说话声切句，不用热键也不输出文本，结果给别的程序订阅</small></span>
+            <div class="segmented" id="roles" role="radiogroup" aria-label="工作方式"></div>
+          </div>
         </div>
 
-        <h2 class="group-title">快捷键</h2>
-        <div class="group">
+        <h2 class="group-title" id="hotkeyGroupTitle">快捷键</h2>
+        <div class="group" id="hotkeyGroup">
           <div class="row hotkey-row">
             <span class="label">热键<small>点击插槽后按下快捷键：纯修饰键（如 Option+Command）、F1–F24，或修饰键加 Tab、方向键等；不支持普通字符键</small></span>
             <div class="hotkeys">
               <div id="slots" class="slots"></div>
               <p id="hotkeyError" class="field-error" role="alert" hidden></p>
               <p id="hotkeyExtra" class="field-note" hidden></p>
-              <p id="hotkeyNote" class="field-note" hidden></p>
               <button type="button" id="manualToggle" class="link">手动编辑</button>
               <input type="text" name="pushToTalk" id="pushToTalk" spellcheck="false" hidden
                 placeholder="Alt+Super, F13" aria-label="热键列表，逗号分隔">
             </div>
           </div>
           <div class="row">
-            <span class="label">模式<small>会话怎么开始和结束。切换：按一下开始、再按一下结束；按住：按住说话、松开结束；持续转写：启动即开始，服务端掉线会自动重连并补发重连期间的音频，不注册热键</small></span>
+            <span class="label">模式<small>热键怎么开始和结束一次听写。切换：按一下开始、再按一下结束；按住：按住说话、松开结束</small></span>
             <div class="segmented" id="modes" role="radiogroup" aria-label="模式"></div>
           </div>
           <label class="row">
@@ -94,11 +97,10 @@
 
         <h2 class="group-title">输出</h2>
         <div class="group">
-          <div class="row device-row">
+          <div class="row device-row" id="textOutputRow">
             <span class="label">识别结果送到哪里<small>Just Talk 自己把文字放到哪里；不输出 = 只转写，不碰输入框和剪贴板。订阅识别结果的程序不受这个设置影响</small></span>
             <div class="stack">
               <select name="textOutput" id="textOutput"></select>
-              <p id="textOutputNote" class="field-note" hidden></p>
             </div>
           </div>
           <label class="row">

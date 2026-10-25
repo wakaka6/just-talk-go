@@ -11,6 +11,11 @@ let draft = null;
 let edits = {};
 let saving = false;
 
+// config.ModeContinuous: the one mode that is not dictation at all.
+const CONTINUOUS = "continuous";
+// Which dictation mode to come back to after a trip through 持续转写.
+let lastDictationMode = "toggle";
+
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 const POSITION_LABELS = {
@@ -79,6 +84,8 @@ function applyState(state) {
   renderSlots();
   renderDevices();
   renderHotwords();
+  if (draft.mode !== CONTINUOUS) lastDictationMode = draft.mode;
+  renderRoles();
   renderModes();
   renderEngines();
   updateDirty();
@@ -125,8 +132,6 @@ function modName(ev) {
 
 function renderSlots() {
   const list = splitHotkeys(draft.pushToTalk);
-  // Continuous mode is triggered by speech, so there is no key to record.
-  const inert = draft.mode === "continuous";
   $("slots").replaceChildren(...SLOT_NAMES.map((name, i) => {
     const value = list[i] || "";
     const recording = rec?.slot === i;
@@ -143,7 +148,6 @@ function renderSlots() {
         type: "button",
         class: recording ? "recorder recording" : "recorder",
         "aria-label": `${name}：${value || "未设置"}，${recording ? "正在录制" : "点击录制"}`,
-        disabled: inert,
         onclick: () => (recording ? endRecording() : startRecording(i)),
       },
         recording ? el("span", { class: "rec-dot" }) : null,
@@ -156,8 +160,6 @@ function renderSlots() {
   const extra = list.slice(SLOT_NAMES.length);
   $("hotkeyExtra").hidden = extra.length === 0;
   $("hotkeyExtra").textContent = `配置中还有 ${extra.join("、")}，保存时一并保留；可用“手动编辑”修改。`;
-  $("hotkeyNote").textContent = inert ? "持续转写由说话声触发，不用热键" : "";
-  $("hotkeyNote").hidden = !inert;
 }
 
 function setSlot(i, value) {
@@ -301,19 +303,40 @@ function renderDevices() {
   $("deviceError").hidden = !saved.devicesError;
 }
 
+// 听写是你对着电脑说，持续转写转的是外部音源——两件事，不是同一个选择器里的
+// 三个值。热键、模式、输出去向都只属于听写，所以换成持续转写时它们直接
+// 不在这个界面上，而不是“在、但不生效”。
+function renderRoles() {
+  const service = draft.mode === CONTINUOUS;
+  $("roles").replaceChildren(...[["听写", false], ["持续转写", true]].map(([label, wants]) => el("button", {
+    type: "button",
+    role: "radio",
+    "aria-checked": String(wants === service),
+    onclick: () => setRole(wants),
+  }, label)));
+  $("hotkeyGroupTitle").hidden = service;
+  $("hotkeyGroup").hidden = service;
+  $("textOutputRow").hidden = service;
+}
+
+function setRole(service) {
+  const next = service ? CONTINUOUS : lastDictationMode;
+  if (next === draft.mode) return;
+  if (draft.mode !== CONTINUOUS) lastDictationMode = draft.mode;
+  draft.mode = next;
+  renderRoles();
+  renderModes();
+  updateDirty();
+}
+
 function renderModes() {
-  const labels = { toggle: "切换", hold: "按住", continuous: "持续转写" };
-  $("modes").replaceChildren(...saved.modes.map((m) => el("button", {
+  const labels = { toggle: "切换", hold: "按住" };
+  $("modes").replaceChildren(...saved.modes.filter((m) => m !== CONTINUOUS).map((m) => el("button", {
     type: "button",
     role: "radio",
     "aria-checked": String(draft.mode === m),
-    onclick: () => { draft.mode = m; renderModes(); renderSlots(); updateDirty(); },
+    onclick: () => { draft.mode = m; lastDictationMode = m; renderModes(); updateDirty(); },
   }, labels[m] || m)));
-  // 持续转写转的是外部音源，不是用户在说，所以没有文本该往哪里去这回事。
-  const inert = draft.mode === "continuous";
-  $("textOutputNote").textContent = inert ? "持续转写转的是外部音源，不输出文本" : "";
-  $("textOutputNote").hidden = !inert;
-  $("textOutput").disabled = inert;
 }
 
 // ---- hotwords ----
