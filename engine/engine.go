@@ -222,7 +222,10 @@ func (e *Engine) WatchConfig(path string) {
 				if filepath.Base(event.Name) != base {
 					continue
 				}
-				if event.Has(fsnotify.Write) {
+				// Editors and scripts often save atomically: write a temp
+				// file, then rename it over the target. That arrives as
+				// Create or Rename, never as Write, and used to be missed.
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
 					e.logger.Info("config file changed, reloading", "path", path)
 					newCfg, err := config.Load(path)
 					if err != nil {
