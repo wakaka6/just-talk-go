@@ -49,6 +49,9 @@ type field struct {
 	boolVal bool
 	opts    []string
 	optIdx  int
+	// optVals are the values saved for opts when the label differs from what
+	// goes into the config (device names carry what they record).
+	optVals []string
 	// required marks a must-fill key in engine config modals (label gets *).
 	required bool
 	// secret masks value when not editing (API keys).
@@ -82,8 +85,12 @@ func New(cfg *config.Config) *Model {
 	vc := cfg.Voice
 	ti := func(v string) textinput.Model { t := textinput.New(); t.SetValue(v); t.Cursor.Blink = false; return t }
 	positions := settings.OverlayPositionOptions(cfg.Overlay.Position)
+	// Devices are enumerated asynchronously (fetchDevices); until that lands
+	// the select offers the system default and whatever is configured.
+	devLabels, devValues, devIdx := deviceOptions(nil, vc.Device)
 	fs := []field{
 		{label: "语音输入", key: "enabled", help: "关闭后不注册热键", fType: fToggle, boolVal: vc.Enabled},
+		{label: "录音设备", key: "device", help: deviceHelp, fType: fSelect, opts: devLabels, optVals: devValues, optIdx: devIdx},
 		{label: "热键", key: "push_to_talk", help: "例: Alt+Super / F9 / Ctrl+Alt+Tab；多个用逗号分隔，如 Fn, F13；不支持字母、数字、标点、空格等普通字符键", fType: fString, input: ti(vc.PushToTalk)},
 		{label: "模式", key: "mode", help: "toggle 切换 / hold 按住 / continuous 持续转写（不上屏）", fType: fSelect, opts: []string{"toggle", "hold", "continuous"}, optIdx: idxOf([]string{"toggle", "hold", "continuous"}, vc.Mode)},
 		{label: "引擎", key: "engine", help: "回车选择识别引擎；流式引擎支持实时字幕", fType: fAction},
@@ -99,6 +106,14 @@ func New(cfg *config.Config) *Model {
 
 func (m *Model) SetDebug(debug bool) {
 	m.debug = debug
+}
+
+// selected returns the config value of the chosen option.
+func (f field) selected() string {
+	if f.optVals != nil {
+		return f.optVals[f.optIdx]
+	}
+	return f.opts[f.optIdx]
 }
 
 func idxOf(opts []string, v string) int {
@@ -126,7 +141,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error != nil {
 			m.logf("设备: %s", msg.Error)
 		} else {
-			m.devices = msg.Devices
+			m.setDevices(msg.Devices)
 		}
 	}
 	return m, nil
@@ -250,7 +265,9 @@ func (m *Model) save() {
 		case "push_to_talk":
 			vc.PushToTalk = f.input.Value()
 		case "mode":
-			vc.Mode = f.opts[f.optIdx]
+			vc.Mode = f.selected()
+		case "device":
+			vc.Device = f.selected()
 		case "language":
 			vc.Language = strings.TrimSpace(f.input.Value())
 		case "auto_submit":
@@ -260,7 +277,7 @@ func (m *Model) save() {
 		case "hotwords":
 			vc.Hotwords = settings.SplitList(f.input.Value())
 		case "overlay_position":
-			next.Overlay.Position = f.opts[f.optIdx]
+			next.Overlay.Position = f.selected()
 		}
 	}
 	if err := settings.ValidateHotkeys(vc.PushToTalk); err != nil {
