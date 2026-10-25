@@ -201,6 +201,8 @@ input[type="text"], input[type="number"], input[type="password"], textarea, sele
   transition: border-color .15s, box-shadow .15s;
 }
 select { padding-right: 24px; }
+/* A placeholder is an example, not a value: it must not read like one. */
+::placeholder { color: var(--muted); opacity: .55; }
 input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible, [tabindex]:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
@@ -409,6 +411,8 @@ kbd {
 .state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .state.ok { color: var(--accent); }
 .state.missing { color: var(--warn); }
+.state.off { color: var(--muted); }
+.field-note.state { white-space: normal; }
 .engine .configure { font-size: 12px; padding: 3px 10px; }
 
 /* ---- sheet ---- */

@@ -719,9 +719,13 @@ function renderStatus({ status, stats, logs }) {
   $("statusDetail").textContent = parts.join("  ");
   box.title = parts.join("  ");
   // The server only starts after a save, so say what it is actually doing.
-  $("streamState").textContent = status.streamUrl
-    ? `监听中 ${status.streamUrl} · ${status.streamSubscribers} 个订阅者`
-    : (draft && draft.streamAddr ? "未启动（保存后生效；地址被占用时见日志）" : "已关闭");
+  const [streamClass, streamText] = status.streamUrl
+    ? ["ok", `监听中 ${status.streamUrl} · ${status.streamSubscribers} 个订阅者`]
+    : draft && draft.streamAddr
+      ? ["missing", "未启动：保存后生效；地址被占用时见日志"]
+      : ["off", "未开启：填上地址并保存后开始监听"];
+  $("streamState").className = `field-note state ${streamClass}`;
+  $("streamState").textContent = streamText;
 
   $("statSessions").textContent = stats.sessions.toLocaleString();
   $("statChars").textContent = stats.chars.toLocaleString();
