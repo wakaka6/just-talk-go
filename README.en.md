@@ -315,7 +315,9 @@ enabled = false                    # turn the overlay off if you don't want the 
 | Address | Who can connect | Cost |
 |---|---|---|
 | `127.0.0.1:7590` | **any** local program, browsers included | no access control. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is rejected when you save, and browser connections from other origins are rejected |
-| `unix:~/.local/state/just-talk/asr.sock` | **only the owner** (the socket is created 0600) | browsers cannot reach it; a client has to dial a Unix socket; it does listen on Windows, but 0600 means nothing there (Windows permission bits only set the read-only attribute) and who can connect depends on the directory's permissions, so use a port on Windows |
+| `unix:~/.local/state/just-talk/asr.sock` | **only the owner** (the socket is created 0600) | browsers cannot reach it; a client has to dial a Unix socket; **not supported on Windows** |
+
+> **`unix:` addresses are not supported on Windows; use `127.0.0.1:<port>` there.** On Windows 0600 has no effect (Windows permission bits only set the read-only attribute), so the "only the owner can connect" guarantee does not hold.
 
 A path also settles identity: a port only tells you something is bound, a socket path tells you which instance. A socket file left behind by a crash is cleaned up; if an instance really is listening on it, startup fails loudly instead of stealing the address. If the path holds anything that is not a socket, such as a regular file, Just Talk never removes it: the subscription server does not start and the log says why, so a mistyped address cannot cost you a file.
 
