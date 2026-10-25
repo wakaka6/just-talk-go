@@ -283,7 +283,11 @@ stream_addr = "127.0.0.1:7590"
 enabled = false                    # turn the overlay off if you don't want the notch indicator
 ```
 
-**Recognition result subscription**: with `stream_addr` set (editable in the settings window and the TUI, both of which show the listening address and how many subscribers are connected), Just Talk serves a WebSocket at `ws://<stream_addr>/asr` in every recording mode. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is rejected when you save. Browser connections from other origins are rejected. **Any number of subscribers** may connect at any time and every one of them receives the same frames (filter client-side if you only care about some); a subscriber that falls behind is disconnected on its own without slowing the others down. A config reload restarts the server only when the address changes. The server sends JSON text frames only:
+**Recognition result subscription**: with `stream_addr` set (editable in the settings window and the TUI, both of which show the listening address and how many subscribers are connected), Just Talk serves a WebSocket at `ws://<stream_addr>/asr` in every recording mode. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is rejected when you save. Browser connections from other origins are rejected. A config reload restarts the server only when the address changes.
+
+**Any number of subscribers, none of them aware of the others**: this is one shared stream of ASR results. No frame is addressed to a particular subscriber and no frame reveals how many others are connected (that count only appears in the settings UI). Each connection has its own buffer, and one that falls behind is disconnected on its own — without slowing down the others or recognition. Subscribers cannot even send anything (inbound frames are read and discarded, only to notice a disconnect). So “filter client-side” means “I only care about the definite sentences”, not “sort someone else’s mail”.
+
+The server sends JSON text frames only:
 
 ```jsonc
 // an ASR session connected
