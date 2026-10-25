@@ -125,6 +125,8 @@ function modName(ev) {
 
 function renderSlots() {
   const list = splitHotkeys(draft.pushToTalk);
+  // Continuous mode is triggered by speech, so there is no key to record.
+  const inert = draft.mode === "continuous";
   $("slots").replaceChildren(...SLOT_NAMES.map((name, i) => {
     const value = list[i] || "";
     const recording = rec?.slot === i;
@@ -141,6 +143,7 @@ function renderSlots() {
         type: "button",
         class: recording ? "recorder recording" : "recorder",
         "aria-label": `${name}：${value || "未设置"}，${recording ? "正在录制" : "点击录制"}`,
+        disabled: inert,
         onclick: () => (recording ? endRecording() : startRecording(i)),
       },
         recording ? el("span", { class: "rec-dot" }) : null,
@@ -153,6 +156,8 @@ function renderSlots() {
   const extra = list.slice(SLOT_NAMES.length);
   $("hotkeyExtra").hidden = extra.length === 0;
   $("hotkeyExtra").textContent = `配置中还有 ${extra.join("、")}，保存时一并保留；可用“手动编辑”修改。`;
+  $("hotkeyNote").textContent = inert ? "持续转写由说话声触发，不用热键" : "";
+  $("hotkeyNote").hidden = !inert;
 }
 
 function setSlot(i, value) {
@@ -302,11 +307,11 @@ function renderModes() {
     type: "button",
     role: "radio",
     "aria-checked": String(draft.mode === m),
-    onclick: () => { draft.mode = m; renderModes(); updateDirty(); },
+    onclick: () => { draft.mode = m; renderModes(); renderSlots(); updateDirty(); },
   }, labels[m] || m)));
-  // 持续转写没有“说完了”这个时刻，所以不输出文本；别让设置默默失效。
+  // 持续转写转的是外部音源，不是用户在说，所以没有文本该往哪里去这回事。
   const inert = draft.mode === "continuous";
-  $("textOutputNote").textContent = inert ? "持续转写不输出文本，此项不生效" : "";
+  $("textOutputNote").textContent = inert ? "持续转写转的是外部音源，不输出文本" : "";
   $("textOutputNote").hidden = !inert;
   $("textOutput").disabled = inert;
 }

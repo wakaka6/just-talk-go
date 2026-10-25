@@ -85,7 +85,10 @@ const (
 	ModeToggle = "toggle"
 	// ModeHold 按住说话，松开结束。
 	ModeHold = "hold"
-	// ModeContinuous 启动即开始，会话断了自动重连；不注册热键，也不输出文本。
+	// ModeContinuous 启动即开始，由静音门控按说话声切句。这个模式转的是外部音源
+	// （会议、系统声音），不是用户对着机器说话，所以既没有要按的键，也没有
+	// 「把这段话放到哪里」这个问题：不注册热键、不输出文本，结果只给日志、
+	// 浮层和识别结果订阅者。
 	ModeContinuous = "continuous"
 )
 

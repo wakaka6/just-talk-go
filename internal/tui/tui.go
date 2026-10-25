@@ -521,6 +521,10 @@ func (m *Model) renderField(i int, f field) string {
 		if f.key == "access_key" && !editing && len(v) > 8 {
 			v = v[:8] + "***"
 		}
+		// 持续转写由说话声触发，没有要按的键；说清楚，别让设置默默失效。
+		if f.key == "push_to_talk" && !editing && m.selectedMode() == config.ModeContinuous {
+			return dStyle.Render(v + "  (持续转写由说话声触发，不用热键)")
+		}
 		if editing {
 			return f.input.View()
 		}
@@ -535,9 +539,9 @@ func (m *Model) renderField(i int, f field) string {
 		if v == "" {
 			v = "(未设置)"
 		}
-		// 持续转写没有“说完了”这个时刻，所以不输出文本；说清楚，别让设置默默失效。
+		// 持续转写转的是外部音源，不是用户在说，所以没有文本该往哪里去这回事。
 		if f.key == "text_output" && m.selectedMode() == config.ModeContinuous {
-			return dStyle.Render(v + "  (持续转写不输出文本，此项不生效)")
+			return dStyle.Render(v + "  (持续转写转的是外部音源，不输出文本)")
 		}
 		if editing {
 			return aStyle.Render("[" + v + " ▲▼]")

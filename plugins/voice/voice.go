@@ -230,12 +230,17 @@ func statsPath() string {
 	return filepath.Join(base, "just-talk", "stats.json")
 }
 
+// idleDetail is what the status line says when nothing is happening. It
+// depends on the mode (a hotkey to press, or speech to wait for), so an
+// expiring error must reuse the last one instead of naming a hotkey.
+var idleDetail = "等待热键"
+
 func TUIStatus() TUIVoiceStatus {
 	tuiStatusMu.Lock()
 	defer tuiStatusMu.Unlock()
 	if tuiStatus.State == "error" && !tuiStatus.ErrorUntil.IsZero() && time.Now().After(tuiStatus.ErrorUntil) {
 		tuiStatus.State = "idle"
-		tuiStatus.Detail = "等待热键"
+		tuiStatus.Detail = idleDetail
 		tuiStatus.Recording = false
 		tuiStatus.Stopping = false
 		tuiStatus.StopAt = time.Time{}
@@ -1035,6 +1040,10 @@ func (p *VoicePlugin) claimSessionOutput(sessionID uint64) bool {
 
 func (p *VoicePlugin) publishStatusLocked() {
 	state, detail := "idle", "等待热键"
+	if p.mode == modeContinuous {
+		// This mode has no hotkey to wait for; the speech gate starts a session.
+		detail = "持续转写：等待说话"
+	}
 	stopAt := time.Time{}
 	recording, stopping := p.recording, false
 
@@ -1093,6 +1102,9 @@ func (p *VoicePlugin) publishStatusSnapshotLocked(state, detail string, recordin
 	pendingDone := p.pendingDone
 	setTUIStatus(func(s *TUIVoiceStatus) {
 		s.State, s.Detail = state, detail
+		if state == "idle" {
+			idleDetail = detail
+		}
 		s.Recording, s.Stopping = recording, stopping
 		s.StopAt = stopAt
 		s.ErrorUntil = p.errorUntil

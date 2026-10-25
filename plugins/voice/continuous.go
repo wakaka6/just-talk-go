@@ -13,9 +13,13 @@ import (
 )
 
 // modeContinuous transcribes without hotkeys: the speech gate opens a session
-// when someone starts talking and closes it when they stop. Results only go
-// to the log, overlay and stream subscribers; nothing is ever pasted, typed
-// or copied.
+// when someone starts talking and closes it when they stop.
+//
+// The audio here is an external source — a meeting, system output, a room —
+// not the user talking to their own machine. Nobody asked for this text, so
+// there is no key to press and no destination to paste into: results only go
+// to the log, the overlay and stream subscribers. That is what the mode is
+// for, not a limitation of it.
 const modeContinuous = config.ModeContinuous
 
 const (
@@ -137,6 +141,10 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 func (p *VoicePlugin) runContinuousSessions(ctx context.Context, vc config.VoiceConfig, gate *speechGate) {
 	backoff := continuousBackoffMin
 	for ctx.Err() == nil {
+		if gate.enabled {
+			// Not "waiting for a hotkey": this mode has none.
+			p.publishContinuousStatus("idle", "持续转写：等待说话")
+		}
 		if !gate.waitOpen(ctx) {
 			return
 		}
@@ -154,7 +162,6 @@ func (p *VoicePlugin) runContinuousSessions(ctx context.Context, vc config.Voice
 		}
 		if connected && gate.enabled {
 			backoff = continuousBackoffMin
-			p.publishContinuousStatus("idle", "持续转写：等待说话")
 			p.logger.Debug("continuous: utterance ended", "reason", err)
 			continue
 		}
