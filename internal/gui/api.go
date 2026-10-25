@@ -92,6 +92,7 @@ type settingsJSON struct {
 	Enabled         bool     `json:"enabled"`
 	PushToTalk      string   `json:"pushToTalk"`
 	Mode            string   `json:"mode"`
+	Device          string   `json:"device"`
 	Language        string   `json:"language"`
 	AutoSubmit      bool     `json:"autoSubmit"`
 	StopDelayMs     int      `json:"stopDelayMs"`
@@ -126,6 +127,10 @@ type stateJSON struct {
 	OverlayPositions []string            `json:"overlayPositions"`
 	Languages        []settings.Language `json:"languages"`
 	Modes            []string            `json:"modes"`
+	// Devices are the input devices found now; an empty device setting means
+	// the system default. DevicesError explains an empty list.
+	Devices      []voice.InputDevice `json:"devices"`
+	DevicesError string              `json:"devicesError,omitempty"`
 }
 
 func (s *server) state(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +160,7 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 			Enabled:         vc.Enabled,
 			PushToTalk:      canonicalHotkeys(vc.PushToTalk),
 			Mode:            vc.Mode,
+			Device:          vc.Device,
 			Language:        vc.Language,
 			AutoSubmit:      vc.AutoSubmit,
 			StopDelayMs:     vc.StopDelayMs,
@@ -165,6 +171,11 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 		OverlayPositions: settings.OverlayPositionOptions(cfg.Overlay.Position),
 		Languages:        settings.LanguageOptions(vc.Language),
 		Modes:            []string{"toggle", "hold", "continuous"},
+	}
+	if devices, err := voice.ListDevices(); err != nil {
+		st.DevicesError = err.Error()
+	} else {
+		st.Devices = devices
 	}
 	engines := settings.Engines
 	if current := st.Settings.Engine; !slices.ContainsFunc(engines, func(e settings.Engine) bool { return e.Name == current }) {
@@ -338,6 +349,9 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	vc.Enabled = in.Enabled
 	vc.PushToTalk = pushToTalk
 	vc.Mode = in.Mode
+	// Any name is accepted: a device may be unplugged while being configured.
+	// The recorder reports an unknown device when it starts.
+	vc.Device = strings.TrimSpace(in.Device)
 	vc.Language = strings.TrimSpace(in.Language)
 	vc.AutoSubmit = in.AutoSubmit
 	vc.StopDelayMs = in.StopDelayMs

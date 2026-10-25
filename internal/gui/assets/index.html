@@ -40,6 +40,14 @@
             <span class="label">启用语音输入<small>关闭后不注册热键</small></span>
             <input type="checkbox" class="switch" name="enabled">
           </label>
+          <div class="row device-row">
+            <span class="label">录音设备<small>麦克风录你和周围的声音；回环设备录本机正在播放的声音（会议、视频），需先把播放输出指向它</small></span>
+            <div class="stack">
+              <select name="device" id="device" aria-label="录音设备"></select>
+              <p id="deviceNote" class="field-note" hidden></p>
+              <p id="deviceError" class="field-error" role="alert" hidden></p>
+            </div>
+          </div>
         </div>
 
         <h2 class="group-title">快捷键</h2>
@@ -56,7 +64,7 @@
             </div>
           </div>
           <div class="row">
-            <span class="label">模式<small>切换：按一下开始、再按一下结束；按住：按住说话、松开结束</small></span>
+            <span class="label">模式<small>切换：按一下开始、再按一下结束；按住：按住说话、松开结束；持续转写：启动后一直转写，不注册热键、不上屏</small></span>
             <div class="segmented" id="modes" role="radiogroup" aria-label="模式"></div>
           </div>
           <label class="row">

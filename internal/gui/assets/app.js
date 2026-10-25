@@ -68,6 +68,7 @@ function applyState(state) {
   endRecording();
   showHotkeyError("");
   renderSlots();
+  renderDevices();
   renderHotwords();
   renderModes();
   renderEngines();
@@ -250,6 +251,41 @@ $("manualToggle").addEventListener("click", () => {
   $("manualToggle").textContent = input.hidden ? "手动编辑" : "收起手动编辑";
   if (!input.hidden) input.focus();
 });
+
+// Recording your own voice and recording what the computer plays are
+// different jobs on different devices; group them so the choice is obvious.
+const DEVICE_GROUPS = [
+  ["mic", "麦克风（录外部声音）"],
+  ["loopback", "回环设备（录本机播放的声音）"],
+  ["unknown", "其他"],
+];
+
+function renderDevices() {
+  const devices = saved.devices || [];
+  const current = /^default$/i.test(draft.device) ? "" : draft.device;
+  const options = [el("option", { value: "" }, "系统默认输入")];
+  for (const [kind, label] of DEVICE_GROUPS) {
+    const items = devices.filter((d) => d.kind === kind);
+    if (items.length) {
+      options.push(el("optgroup", { label }, ...items.map((d) => el("option", { value: d.name }, d.name))));
+    }
+  }
+  // Keep a configured device that is not plugged in right now, so opening the
+  // settings page never silently rewrites the config.
+  if (current && !devices.some((d) => d.name === current)) {
+    options.push(el("option", { value: current }, `${current}（未检测到）`));
+  }
+  $("device").replaceChildren(...options);
+  $("device").value = current;
+
+  const hint = saved.platform === "darwin" && !devices.some((d) => d.kind === "loopback")
+    ? "没有回环设备：macOS 不能直接录本机声音，需装 BlackHole 等虚拟声卡，并把要录的应用的播放输出指向它。"
+    : "";
+  $("deviceNote").textContent = hint;
+  $("deviceNote").hidden = !hint;
+  $("deviceError").textContent = saved.devicesError || "";
+  $("deviceError").hidden = !saved.devicesError;
+}
 
 function renderModes() {
   const labels = { toggle: "切换", hold: "按住", continuous: "持续转写" };
@@ -469,6 +505,7 @@ function readForm() {
   draft.enabled = form.elements.enabled.checked;
   draft.autoSubmit = form.elements.autoSubmit.checked;
   draft.pushToTalk = form.elements.pushToTalk.value;
+  draft.device = form.elements.device.value;
   draft.language = form.elements.language.value;
   draft.stopDelayMs = Number.parseInt(form.elements.stopDelayMs.value, 10) || 0;
   draft.overlayPosition = form.elements.overlayPosition.value;

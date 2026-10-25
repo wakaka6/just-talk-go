@@ -256,9 +256,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 
 /* ---- hotkey slots ---- */
 
-.hotkey-row, .hotword-row { align-items: flex-start; }
-.hotkeys { display: flex; flex-direction: column; gap: 6px; width: 320px; max-width: 100%; }
-.hotkeys #pushToTalk { width: 100%; }
+.hotkey-row, .hotword-row, .device-row { align-items: flex-start; }
+.hotkeys, .stack { display: flex; flex-direction: column; gap: 6px; width: 320px; max-width: 100%; }
+.hotkeys #pushToTalk, .stack select { width: 100%; }
 .slots { display: grid; gap: 6px; }
 .slot { display: grid; grid-template-columns: 4.5em 1fr 24px; align-items: center; gap: 8px; }
 .slot-name { font-size: 12px; color: var(--muted); }
