@@ -279,7 +279,7 @@ This is **Just Talk's own business**: whether text is pasted into the focused fi
 
 Continuous transcription is not on that axis at all: it transcribes an **external source** — a meeting, system output, a room full of people — not you talking to your own machine. Nobody asked for those words to be typed out, so that path outputs no text and `text_output` does not apply to it. That is what it is, not a limit on it.
 
-The two run **in parallel**, not one instead of the other: listening to an external source does not stop you from dictating with a hotkey at the same time. So they are two groups in the settings — "hotkeys" configures dictation, and "continuous transcription" is a switch plus its own external-source device, rather than a third value in one picker.
+The two run **in parallel**, not one instead of the other: listening to an external source does not stop you from dictating with a hotkey at the same time. So they are two groups in the settings — "hotkeys" configures dictation, and "continuous transcription" is a switch with its own external-source device and its own on/off hotkey, rather than a third value in one picker.
 
 **An external word list**: hotwords make recognition fit the words actually being said, but a list inside the config is frozen. `hotwords_file` points at a text file (one word per line, `#` starts a comment, `~` is expanded) whose words are merged with `hotwords`. The list reaches the engine when a session opens, so: dictation picks it up on the next press; continuous transcription with the silence gate on every utterance is a new session, so the file is reread for each one and an edit applies to the next sentence; with the gate off a session can stay up for tens of minutes, so Just Talk checks the file every 2 seconds and **reconnects once after an edit** to apply it. No config change, no restart. An unreadable file is a warning: recognition continues with `hotwords`.
 
@@ -315,9 +315,11 @@ enabled = false                    # turn the overlay off if you don't want the 
 | Address | Who can connect | Cost |
 |---|---|---|
 | `127.0.0.1:7590` | **any** local program, browsers included | no access control. Only loopback addresses (`127.0.0.1`, `::1`, `localhost`) are accepted; anything else is rejected when you save, and browser connections from other origins are rejected |
-| `unix:~/.local/state/just-talk/asr.sock` | **only the owner** (the socket is created 0600) | browsers cannot reach it; a client has to dial a Unix socket; no Windows |
+| `unix:~/.local/state/just-talk/asr.sock` | **only the owner** (the socket is created 0600) | browsers cannot reach it; a client has to dial a Unix socket; it does listen on Windows, but 0600 means nothing there (Windows permission bits only set the read-only attribute) and who can connect depends on the directory's permissions, so use a port on Windows |
 
 A path also settles identity: a port only tells you something is bound, a socket path tells you which instance. A socket file left behind by a crash is cleaned up; if an instance really is listening on it, startup fails loudly instead of stealing the address.
+
+The socket's directory must already exist; Just Talk does not create it. When it is missing the subscription server does not start, and the log says why.
 
 **Only continuous transcription is published. Your own dictation is not**: dictation is Just Talk typing for you and `text_output` decides where it lands; the subscription is the transcription capability offered to other programs, and it carries the external source. That line matters most when both run in parallel: pressing a hotkey never sends your own words to a subscriber.
 
