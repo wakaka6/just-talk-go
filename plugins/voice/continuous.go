@@ -12,9 +12,10 @@ import (
 	"github.com/c/just-talk-go/internal/speech"
 )
 
-// modeContinuous transcribes without hotkeys: sessions start with the plugin
-// and reconnect whenever they end. Results only go to the log, overlay and
-// stream subscribers; nothing is ever pasted, typed or copied.
+// modeContinuous transcribes without hotkeys: the speech gate opens a session
+// when someone starts talking and closes it when they stop. Results only go
+// to the log, overlay and stream subscribers; nothing is ever pasted, typed
+// or copied.
 const modeContinuous = config.ModeContinuous
 
 const (
@@ -22,12 +23,11 @@ const (
 	continuousBackoffMax = 5 * time.Second
 	// A session that ran this long resets the reconnect backoff.
 	continuousStableSession = 10 * time.Second
-	// Audio kept while ASR reconnects, about 5s: the macOS capture pipe
-	// delivers 4096-byte (128ms) chunks.
-	continuousBacklogChunks = 40
-	continuousChunkBytes    = 6400
 	continuousStopTimeout   = 5 * time.Second
 	continuousCloseTimeout  = 2 * time.Second
+	// How long the engine gets to return its last result after the final
+	// audio packet of an utterance.
+	continuousFlushTimeout = 2 * time.Second
 )
 
 var (
@@ -106,14 +106,14 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 		activeRecorder.Store(rec)
 
 		recCtx, recCancel := context.WithCancel(ctx)
-		backlog := newAudioBacklog()
+		gate := newSpeechGate(vc.SilenceGate, p.logger)
 		pumpDone := make(chan struct{})
 		go func() {
 			defer close(pumpDone)
 			defer recCancel()
-			p.pumpAudio(rec, backlog)
+			p.pumpAudio(rec, gate)
 		}()
-		p.runContinuousSessions(recCtx, vc, backlog)
+		p.runContinuousSessions(recCtx, vc, gate)
 		recCancel()
 		_, _ = rec.Stop()
 		<-pumpDone
@@ -131,13 +131,17 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 	p.logger.Info("continuous: stopped")
 }
 
-// runContinuousSessions runs back-to-back ASR sessions over one recorder until
-// ctx ends (shutdown or capture failure).
-func (p *VoicePlugin) runContinuousSessions(ctx context.Context, vc config.VoiceConfig, backlog *audioBacklog) {
+// runContinuousSessions runs one ASR session per utterance over one recorder
+// until ctx ends (shutdown or capture failure). Backoff is for connecting:
+// an utterance ending is the normal outcome, not a failure to recover from.
+func (p *VoicePlugin) runContinuousSessions(ctx context.Context, vc config.VoiceConfig, gate *speechGate) {
 	backoff := continuousBackoffMin
 	for ctx.Err() == nil {
+		if !gate.waitOpen(ctx) {
+			return
+		}
 		startedAt := time.Now()
-		connected, err := p.runContinuousSession(ctx, vc, backlog)
+		connected, err := p.runContinuousSession(ctx, vc, gate)
 		if ctx.Err() != nil {
 			return
 		}
@@ -147,6 +151,12 @@ func (p *VoicePlugin) runContinuousSessions(ctx context.Context, vc config.Voice
 			pout("❌ %v", err)
 			<-ctx.Done()
 			return
+		}
+		if connected && gate.enabled {
+			backoff = continuousBackoffMin
+			p.publishContinuousStatus("idle", "持续转写：等待说话")
+			p.logger.Debug("continuous: utterance ended", "reason", err)
+			continue
 		}
 		if connected && time.Since(startedAt) >= continuousStableSession {
 			backoff = continuousBackoffMin
@@ -166,10 +176,10 @@ func (p *VoicePlugin) runContinuousSessions(ctx context.Context, vc config.Voice
 	}
 }
 
-// runContinuousSession connects one ASR session, streams the backlog into it
+// runContinuousSession connects one ASR session, streams one utterance into it
 // and consumes results until the session ends. It reports whether the session
 // connected and why it ended.
-func (p *VoicePlugin) runContinuousSession(ctx context.Context, vc config.VoiceConfig, backlog *audioBacklog) (bool, error) {
+func (p *VoicePlugin) runContinuousSession(ctx context.Context, vc config.VoiceConfig, gate *speechGate) (bool, error) {
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	p.mu.Lock()
@@ -198,19 +208,32 @@ func (p *VoicePlugin) runContinuousSession(ctx context.Context, vc config.VoiceC
 	pout("✅ ASR 已连接 (持续转写)")
 	p.publishContinuousStatus("recording", "持续转写中")
 	p.publishSessionStart(sessionID)
-	// Hotwords only reach the engine when a session opens; a continuous
-	// session can outlive many edits of the word list.
-	go p.hotwords.watch(sctx, vc, func() {
-		p.logger.Info("hotwords file changed, restarting session")
-		pout("\U0001f501 热词已更新，重连以生效")
-		cancel()
-	})
+	// Hotwords only reach the engine when a session opens. With the gate on
+	// that is once per utterance, so the file is already reread every time;
+	// only a long-lived session needs watching.
+	if !gate.enabled {
+		go p.hotwords.watch(sctx, vc, func() {
+			p.logger.Info("hotwords file changed, restarting session")
+			pout("\U0001f501 热词已更新，重连以生效")
+			cancel()
+		})
+	}
 
 	sendDone := make(chan struct{})
+	utteranceEnded := false
 	go func() {
 		defer close(sendDone)
 		defer cancel()
-		p.streamBacklog(sctx, client, backlog)
+		utteranceEnded = p.streamGated(sctx, client, gate)
+		if !utteranceEnded {
+			return
+		}
+		// The final packet is out: give the engine a moment to answer with
+		// its last result before the session is torn down.
+		select {
+		case <-sctx.Done():
+		case <-time.After(continuousFlushTimeout):
+		}
 	}()
 	err = p.consumeContinuousResults(sctx, sessionID, client)
 	cancel()
@@ -219,7 +242,7 @@ func (p *VoicePlugin) runContinuousSession(ctx context.Context, vc config.VoiceC
 	switch {
 	case errors.Is(err, errSessionEndedByServer):
 		reason = sessionEndLast
-	case errors.Is(err, errSessionClosed), ctx.Err() != nil:
+	case utteranceEnded, errors.Is(err, errSessionClosed), ctx.Err() != nil:
 		reason = sessionEndClosed
 	}
 	p.publishSessionEnd(sessionID, reason)
@@ -272,39 +295,44 @@ func printUtterances(utterances []speech.Utterance, printed int) int {
 	return printed
 }
 
-// streamBacklog sends captured audio to client until the session ends.
-func (p *VoicePlugin) streamBacklog(ctx context.Context, client speech.StreamSession, backlog *audioBacklog) {
+// streamGated sends one utterance to client and reports whether it sent the
+// final packet, which asks the engine to flush its last result. False means
+// capture stopped, the send failed or the session died first.
+func (p *VoicePlugin) streamGated(ctx context.Context, client speech.StreamSession, gate *speechGate) bool {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return false
 		case <-client.Done():
-			return
-		case chunk := <-backlog.chunks:
+			return false
+		case c := <-gate.chunks:
 			sendCtx, sendCancel := context.WithTimeout(ctx, audioSendTimeout)
-			err := client.SendAudio(sendCtx, chunk, false)
+			err := client.SendAudio(sendCtx, c.data, c.last)
 			sendCancel()
-			backlog.release(chunk)
+			gate.release(c.data)
 			if err != nil {
 				if ctx.Err() == nil {
 					p.logger.Warn("continuous: send audio failed", "error", err)
 				}
-				return
+				return false
+			}
+			if c.last {
+				return true
 			}
 		}
 	}
 }
 
-// pumpAudio drains the recorder into backlog until capture stops, so the
-// capture pipe never fills while ASR reconnects.
-func (p *VoicePlugin) pumpAudio(rec *Recorder, backlog *audioBacklog) {
+// pumpAudio drains the recorder into the gate until capture stops, so the
+// capture pipe never fills while the gate is shut or ASR reconnects.
+func (p *VoicePlugin) pumpAudio(rec *Recorder, gate *speechGate) {
 	for {
-		chunk := backlog.acquire()
+		chunk := gate.acquire()
 		n, err := rec.Read(chunk)
 		if n > 0 {
-			backlog.push(chunk[:n])
+			gate.push(chunk[:n])
 		} else {
-			backlog.release(chunk)
+			gate.release(chunk)
 		}
 		if err != nil {
 			if err != io.EOF {
@@ -333,55 +361,6 @@ func (p *VoicePlugin) publishContinuousStatus(state, detail string) {
 	defer p.mu.Unlock()
 	// Status only: the hotkey state machine (and its Esc/R hotkeys) stays idle.
 	p.publishStatusSnapshotLocked(state, detail, state == "recording", false, time.Time{}, p.sessionID)
-}
-
-// audioBacklog is a bounded queue of PCM chunks with recycled buffers. When
-// full, the oldest chunk is dropped so the newest audio always gets through.
-type audioBacklog struct {
-	chunks chan []byte
-	free   chan []byte
-}
-
-func newAudioBacklog() *audioBacklog {
-	return &audioBacklog{
-		chunks: make(chan []byte, continuousBacklogChunks),
-		free:   make(chan []byte, continuousBacklogChunks+2),
-	}
-}
-
-func (b *audioBacklog) acquire() []byte {
-	select {
-	case chunk := <-b.free:
-		return chunk[:continuousChunkBytes]
-	default:
-		return make([]byte, continuousChunkBytes)
-	}
-}
-
-func (b *audioBacklog) release(chunk []byte) {
-	select {
-	case b.free <- chunk:
-	default:
-	}
-}
-
-// push is called only by the single pump goroutine.
-func (b *audioBacklog) push(chunk []byte) {
-	select {
-	case b.chunks <- chunk:
-		return
-	default:
-	}
-	select {
-	case old := <-b.chunks:
-		b.release(old)
-	default:
-	}
-	select {
-	case b.chunks <- chunk:
-	default:
-		b.release(chunk)
-	}
 }
 
 func nextContinuousBackoff(d time.Duration) time.Duration {

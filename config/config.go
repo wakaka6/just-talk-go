@@ -59,6 +59,9 @@ type VoiceConfig struct {
 	// HotwordsFile 外部词表：一行一个词，# 开头为注释，与 Hotwords 合并。
 	// 每次会话开始时重读，所以外部程序改完文件下一句就生效。
 	HotwordsFile string `toml:"hotwords_file"`
+	// SilenceGate 只对持续转写生效：按说话声切句，静音时既不送音频也不留着会话。
+	// 默认开启；写 false 退回"一直连着、断了就重连"的老行为。
+	SilenceGate bool `toml:"silence_gate"`
 }
 
 // TextOutput 的取值。
@@ -144,6 +147,7 @@ func Default() *Config {
 		Voice: VoiceConfig{
 			Enabled: true, Mode: ModeToggle, PushToTalk: "Alt+Super",
 			Language: "zh-CN", TextOutput: OutputPaste, ResourceID: "volc.bigasr.sauc.duration",
+			SilenceGate: true,
 		},
 		Overlay: OverlayConfig{
 			Enabled: true, Position: DefaultOverlayPosition(), IdleVisible: false, ShowText: true, Scale: 1.0,
