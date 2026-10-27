@@ -37,9 +37,13 @@ var (
 	retryErrorCombo      = hotkey.Combo{Mods: hotkey.ModNone, Key: hotkey.KeyR}
 )
 
-var TUILog func(string)
 var tuiLogBuf []LogEntry
 var tuilogMu sync.Mutex
+
+// activitySave hands the latest persistable voice log to the writer started
+// by KeepActivity; nil when the log is not kept on disk.
+var activitySave chan []LogEntry
+
 var outputMu sync.Mutex
 var outputWriter io.Writer = os.Stdout
 var tuiStatus = TUIVoiceStatus{State: "idle", UpdatedAt: time.Now()}
@@ -76,10 +80,7 @@ type TUIVoiceStats struct {
 
 func pout(format string, args ...interface{}) {
 	msg := strings.ReplaceAll(fmt.Sprintf(format, args...), "\n", " ")
-	if TUILog != nil {
-		TUILog(msg)
-		return
-	}
+	recordLog(msg)
 	outputMu.Lock()
 	defer outputMu.Unlock()
 	if outputWriter != nil {
@@ -93,29 +94,137 @@ func SetOutput(w io.Writer) {
 	outputMu.Unlock()
 }
 
-func SetupTUILog() {
-	TUILog = func(msg string) {
-		tuilogMu.Lock()
-		entry := LogEntry{Time: time.Now(), Text: msg}
-		// A streaming partial ("\r…") replaces the one before it, so one
-		// dictation cannot push earlier sessions out of the buffer.
-		if n := len(tuiLogBuf); n > 0 && isPartialLog(msg) && isPartialLog(tuiLogBuf[n-1].Text) {
-			tuiLogBuf[n-1] = entry
-		} else {
-			tuiLogBuf = append(tuiLogBuf, entry)
+// recordLog keeps msg in the voice log buffer that the UIs read.
+func recordLog(msg string) {
+	tuilogMu.Lock()
+	defer tuilogMu.Unlock()
+	entry := LogEntry{Time: time.Now(), Text: msg}
+	// A streaming partial ("\r…") replaces the one before it, so one
+	// dictation cannot push earlier sessions out of the buffer.
+	if n := len(tuiLogBuf); n > 0 && isPartialLog(msg) && isPartialLog(tuiLogBuf[n-1].Text) {
+		tuiLogBuf[n-1] = entry
+	} else {
+		tuiLogBuf = append(tuiLogBuf, entry)
+	}
+	if len(tuiLogBuf) > 200 {
+		tuiLogBuf = tuiLogBuf[len(tuiLogBuf)-100:]
+	}
+	if activitySave == nil || isPartialLog(msg) {
+		return
+	}
+	// Latest wins: the writer only ever needs the newest snapshot, and the
+	// caller may be a hotkey or ASR path that must not wait on the disk.
+	snap := persistableLogs(tuiLogBuf)
+	select {
+	case activitySave <- snap:
+	default:
+		select {
+		case <-activitySave:
+		default:
 		}
-		if len(tuiLogBuf) > 200 {
-			tuiLogBuf = tuiLogBuf[len(tuiLogBuf)-100:]
-		}
-		tuilogMu.Unlock()
+		activitySave <- snap
 	}
 }
 
-func DisableTUILog() {
+// KeepActivity loads the voice log kept at path and keeps it there from now
+// on, so the recent activity survives a restart and other programs can read
+// it. Call it once, before the engine starts.
+func KeepActivity(path string) {
+	entries := loadActivity(path)
 	tuilogMu.Lock()
-	TUILog = nil
-	tuiLogBuf = nil
+	tuiLogBuf = append(entries, tuiLogBuf...)
+	activitySave = make(chan []LogEntry, 1)
+	save := activitySave
 	tuilogMu.Unlock()
+	go func() {
+		for entries := range save {
+			if err := writeActivity(path, entries); err != nil {
+				slog.Warn("save voice activity failed", "path", path, "error", err)
+			}
+		}
+	}()
+}
+
+// ActivityPath is where the instance started with cfgPath keeps its voice
+// log: one file per config file name, so instances run with -config do not
+// mix their logs.
+func ActivityPath(cfgPath string) string {
+	name := strings.TrimSuffix(filepath.Base(cfgPath), filepath.Ext(cfgPath))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		name = "config"
+	}
+	return filepath.Join(stateDir(), name+".activity.jsonl")
+}
+
+// persistableLogs drops streaming partials: a partial is superseded by its
+// final line and only means something while the session runs.
+func persistableLogs(entries []LogEntry) []LogEntry {
+	out := make([]LogEntry, 0, len(entries))
+	for _, e := range entries {
+		if !isPartialLog(e.Text) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+type activityLine struct {
+	Time time.Time `json:"time"`
+	Text string    `json:"text"`
+}
+
+// writeActivity replaces the file in one rename, so a reader never sees half
+// a log. It holds transcribed speech, hence 0600.
+func writeActivity(path string, entries []LogEntry) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	for _, e := range entries {
+		if err := enc.Encode(activityLine{Time: e.Time, Text: e.Text}); err != nil {
+			return err
+		}
+	}
+	tmp, err := os.CreateTemp(dir, ".activity-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.WriteString(b.String()); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// loadActivity reads a log written by writeActivity; a missing file or a
+// damaged line costs only that history.
+func loadActivity(path string) []LogEntry {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var out []LogEntry
+	for _, line := range strings.Split(string(data), "\n") {
+		var l activityLine
+		if line == "" || json.Unmarshal([]byte(line), &l) != nil || isPartialLog(l.Text) {
+			continue
+		}
+		out = append(out, LogEntry{Time: l.Time, Text: l.Text})
+	}
+	if len(out) > 200 {
+		out = out[len(out)-100:]
+	}
+	return out
 }
 
 // LogEntry is one buffered voice log line and when it was written.
@@ -218,6 +327,10 @@ func saveTUIStats(stats TUIVoiceStats) {
 }
 
 func statsPath() string {
+	return filepath.Join(stateDir(), "stats.json")
+}
+
+func stateDir() string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
 		if cache, err := os.UserCacheDir(); runtime.GOOS == "windows" && err == nil {
@@ -228,7 +341,7 @@ func statsPath() string {
 			base = "."
 		}
 	}
-	return filepath.Join(base, "just-talk", "stats.json")
+	return filepath.Join(base, "just-talk")
 }
 
 // idleDetail is what the status line says when nothing is happening. It

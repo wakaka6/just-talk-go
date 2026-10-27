@@ -122,7 +122,7 @@ Avoid double-output bugs: recognized final text should be dispatched once per us
 
 TUI mode must not write normal logs to stdout/stderr because it corrupts the Bubble Tea layout. TUI logs go through the in-app log/status area; debug event details should only be visible when `--debug` is enabled. Desktop app mode logs to the file only as well, because it falls back to the TUI when the window cannot open (missing WebView2, `nogui` build).
 
-`voice.SetOutput(io.Discard)` is intentional in TUI, app, and web modes; their voice log is read through `voice.TUILogs()`.
+`voice.SetOutput(io.Discard)` is intentional in TUI, app, and web modes; their voice log is read through `voice.TUILogs()`. `voice.KeepActivity` keeps that log in `<state dir>/just-talk/<config name>.activity.jsonl` from a background writer, so `pout` never waits on the disk.
 
 The settings page holds API keys. The desktop window serves it in-process through Wails; `--web` must stay on loopback behind the per-run key, Host, and Origin checks in `internal/gui/web.go`.
 

@@ -154,6 +154,7 @@ func main() {
 	if p != "" {
 		eng.WatchConfig(p)
 	}
+	voice.KeepActivity(voice.ActivityPath(p))
 
 	switch mode {
 	case "tui":
@@ -186,7 +187,6 @@ func uiOptions(eng *engine.Engine, cfg *config.Config, cfgPath string, debug boo
 }
 
 func runApp(eng *engine.Engine, cfg *config.Config, cfgPath string, debug bool, logger *slog.Logger) {
-	voice.SetupTUILog()
 	voice.SetOutput(io.Discard)
 	done := make(chan struct{})
 	err := gui.RunApp(gui.AppOptions{
@@ -229,7 +229,6 @@ func runApp(eng *engine.Engine, cfg *config.Config, cfgPath string, debug bool, 
 }
 
 func runWeb(eng *engine.Engine, cfg *config.Config, cfgPath string, debug bool) {
-	voice.SetupTUILog()
 	voice.SetOutput(io.Discard)
 	srv, err := gui.ListenWeb("127.0.0.1:0", gui.Handler(uiOptions(eng, cfg, cfgPath, debug)))
 	if err != nil {
@@ -247,7 +246,6 @@ func runWeb(eng *engine.Engine, cfg *config.Config, cfgPath string, debug bool) 
 }
 
 func runTUI(eng *engine.Engine, cfg *config.Config, cfgPath string, debug bool) {
-	voice.SetupTUILog()
 	voice.SetOutput(io.Discard)
 	model := tui.New(cfg, cfgPath)
 	model.SetDebug(debug)
