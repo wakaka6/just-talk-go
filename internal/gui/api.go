@@ -99,17 +99,16 @@ func Handler(opts Options) http.Handler {
 }
 
 type settingsJSON struct {
-	Enabled       bool     `json:"enabled"`
-	PushToTalk    string   `json:"pushToTalk"`
-	Mode          string   `json:"mode"`
-	Device        string   `json:"device"`
-	Language      string   `json:"language"`
-	TextOutput    string   `json:"textOutput"`
-	StopDelayMs   int      `json:"stopDelayMs"`
-	Hotwords      []string `json:"hotwords"`
-	HotwordsFile  string   `json:"hotwordsFile"`
-	StreamEnabled bool     `json:"streamEnabled"`
-	StreamAddr    string   `json:"streamAddr"`
+	Enabled      bool     `json:"enabled"`
+	PushToTalk   string   `json:"pushToTalk"`
+	Mode         string   `json:"mode"`
+	Device       string   `json:"device"`
+	Language     string   `json:"language"`
+	TextOutput   string   `json:"textOutput"`
+	StopDelayMs  int      `json:"stopDelayMs"`
+	Hotwords     []string `json:"hotwords"`
+	HotwordsFile string   `json:"hotwordsFile"`
+	StreamAddr   string   `json:"streamAddr"`
 	// Continuous* is the transcription service that runs alongside dictation.
 	ContinuousEnabled bool   `json:"continuousEnabled"`
 	ContinuousDevice  string `json:"continuousDevice"`
@@ -182,7 +181,6 @@ func (s *server) stateOf(cfg *config.Config) stateJSON {
 			StopDelayMs:       vc.StopDelayMs,
 			Hotwords:          append([]string{}, vc.Hotwords...),
 			HotwordsFile:      vc.HotwordsFile,
-			StreamEnabled:     vc.StreamEnabled,
 			StreamAddr:        vc.StreamAddr,
 			ContinuousEnabled: vc.Continuous.Enabled,
 			ContinuousDevice:  vc.Continuous.Device,
@@ -400,7 +398,7 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	if !config.ValidTextOutput(in.TextOutput) {
 		return nil, fmt.Errorf("未知输出去向: %s", in.TextOutput)
 	}
-	if err := voice.CheckStream(in.StreamEnabled, in.StreamAddr); err != nil {
+	if err := voice.CheckStreamAddr(in.StreamAddr); err != nil {
 		return nil, err
 	}
 	if in.StopDelayMs < 0 {
@@ -430,8 +428,9 @@ func applySettings(cur *config.Config, in settingsJSON) (*config.Config, error) 
 	vc.Language = strings.TrimSpace(in.Language)
 	vc.TextOutput = in.TextOutput
 	vc.HotwordsFile = strings.TrimSpace(in.HotwordsFile)
-	vc.StreamEnabled = in.StreamEnabled
-	vc.StreamAddr = strings.TrimSpace(in.StreamAddr)
+	if vc.StreamAddr = strings.TrimSpace(in.StreamAddr); vc.StreamAddr == "" {
+		vc.StreamAddr = config.DefaultStreamAddr
+	}
 	vc.Continuous.Enabled = in.ContinuousEnabled
 	vc.Continuous.Device = strings.TrimSpace(in.ContinuousDevice)
 	vc.Continuous.Hotkey = continuousHotkey

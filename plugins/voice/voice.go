@@ -528,11 +528,6 @@ func (p *VoicePlugin) OnConfigReload(cfg *config.Config) error { return p.regist
 func (p *VoicePlugin) registerFromConfig(cfg *config.Config) error {
 	p.mu.Lock()
 	p.cfg = cfg
-	streamAddr := ""
-	if cfg.Voice.StreamEnabled {
-		streamAddr = cfg.Voice.StreamAddr
-	}
-	p.syncStreamServerLocked(streamAddr)
 	p.mu.Unlock()
 	vc := cfg.Voice
 	if !vc.Enabled {

@@ -219,8 +219,7 @@ language = "zh-CN"
 text_output = "paste"              # where recognized text goes: paste | clipboard | none
 stop_delay_ms = 0                  # release delay in hold mode
 device = ""                        # recording device (empty = default; macOS matches device UID or name)
-stream_enabled = false             # switch for the result subscription
-stream_addr = "127.0.0.1:7590"     # subscription address: loopback host:port or "unix:~/.../asr.sock"
+stream_addr = "127.0.0.1:7590"     # subscription address: loopback host:port or "unix:~/.../asr.sock"; listened on only while continuous transcription runs
 gain = 0                           # microphone gain
 app_key = "your-app-key"
 access_key = "your-access-key"
@@ -292,7 +291,7 @@ This path has no finger on a key: in dictation a person decides where a sentence
 
 **It has a hotkey too**: bind one in `[voice.continuous] hotkey` and press it to start the service, press it again to stop — the same way you switch dictation on and off. The difference is what the key bounds: a whole service rather than a sentence, so it only toggles and there is no hold — nobody holds a key down for an entire meeting, and sentence boundaries are the silence gate's job anyway. The key changes the **running state** only; it never writes the config file. Editing `enabled` in the settings afterwards overrides what the key chose (an explicit instruction wins), while a reload that leaves the setting alone leaves the key's choice alone. It cannot be the same combo as a dictation hotkey; the settings window and the TUI refuse to save that.
 
-It answers to `[voice] enabled`: turning voice input off (including the “语音输入” switch in the tray panel) also stops continuous transcription and unregisters its hotkey. The subscription server depends only on `stream_enabled` and keeps running.
+It answers to `[voice] enabled`: turning voice input off (including the “语音输入” switch in the tray panel) also stops continuous transcription and unregisters its hotkey. The subscription server follows continuous transcription and stops with it.
 
 The tray panel has a “持续转写” switch too. It shows the **running state**, so it follows the hotkey; clicking it both saves the setting (it survives a restart) and switches the running service, so a service the hotkey started over a saved “off” still stops when you turn it off in the panel. It is greyed out while voice input is off.
 
@@ -305,7 +304,6 @@ This path **never** types, pastes or touches the clipboard, and it **never takes
 ```toml
 [voice]
 push_to_talk = ""                  # service only: no hotkey means no dictation
-stream_enabled = true
 stream_addr = "127.0.0.1:7590"
 
 [voice.continuous]
@@ -316,9 +314,9 @@ device = "BlackHole 2ch"
 enabled = false                    # turn the overlay off if you don't want the notch indicator
 ```
 
-**Recognition result subscription**: with `stream_enabled` on, Just Talk serves a WebSocket at `/asr` on `stream_addr` (default `127.0.0.1:7590`). In the settings window it sits in the same group as continuous transcription, since that is what it publishes: a switch plus the listening address, with a live line below saying listening / not started / off and how many subscribers are connected; the TUI has “结果订阅” and “订阅地址”. The switch and the address are separate: turning it off keeps the address, and saving it on with no address is rejected. A config reload restarts the server only when the switch or the address changes.
+**Recognition result subscription**: **it has no switch of its own; it follows continuous transcription.** While continuous transcription runs, Just Talk serves a WebSocket at `/asr` on `stream_addr` (default `127.0.0.1:7590`; empty means the default). When the service stops — by its hotkey, the tray switch, or voice input being turned off — the subscription stops with it and the port is released. The subscription publishes only what continuous transcription hears, so with the service off there is nothing to publish and a second switch would only be confusing. In the settings window and the TUI it is the “订阅地址” row of the continuous transcription group, with a live line below saying listening / not started / not listening and how many subscribers are connected. Changing the address restarts the subscription server but does not interrupt a transcription in progress.
 
-Older configs have no `stream_enabled`; the address was the switch then. A non-empty `stream_addr` turns the switch on after the upgrade, so the subscription keeps running; a missing or empty one leaves it off and fills in the default address.
+A config that only sets `stream_addr` without turning continuous transcription on no longer listens: the address used to be the switch, now continuous transcription is.
 
 The address comes in two kinds:
 

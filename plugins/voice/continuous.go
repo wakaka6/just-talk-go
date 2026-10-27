@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/c/just-talk-go/config"
@@ -49,6 +50,16 @@ func (p *VoicePlugin) syncContinuous() {
 	ctx := p.runCtx
 	vc := p.cfg.Voice
 	want := ctx != nil && vc.Enabled && p.contEnabled
+	// The subscription has no switch of its own: it publishes only what the
+	// service hears, so it listens exactly while the service runs.
+	streamAddr := ""
+	if want {
+		streamAddr = vc.StreamAddr
+		if strings.TrimSpace(streamAddr) == "" {
+			streamAddr = config.DefaultStreamAddr
+		}
+	}
+	p.syncStreamServerLocked(streamAddr)
 	if want && p.contCancel != nil && reflect.DeepEqual(p.contCfg, continuousKey(vc)) {
 		p.mu.Unlock()
 		return
@@ -384,6 +395,9 @@ func continuousKey(vc config.VoiceConfig) config.VoiceConfig {
 	// Switching the service on or off is handled by want; rebinding its
 	// hotkey must not interrupt a transcription either.
 	vc.Continuous.Enabled, vc.Continuous.Hotkey = false, ""
+	// The subscription server is synced on its own; rebinding its address
+	// must not interrupt a transcription.
+	vc.StreamAddr = ""
 	return vc
 }
 

@@ -96,8 +96,8 @@ func TestSaveRejectsInvalidValuesWithoutWriting(t *testing.T) {
 		"continuous hotkey is a dictation hotkey": func(s *settingsJSON) {
 			s.PushToTalk, s.ContinuousHotkey = "Fn, F13", "f13"
 		},
-		"subscription on without an address": func(s *settingsJSON) {
-			s.StreamEnabled, s.StreamAddr = true, ""
+		"subscription address that is not loopback": func(s *settingsJSON) {
+			s.StreamAddr = "0.0.0.0:7590"
 		},
 		"unknown mode":   func(s *settingsJSON) { s.Mode = "" },
 		"unknown output": func(s *settingsJSON) { s.TextOutput = "whatever" },

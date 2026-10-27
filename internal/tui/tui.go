@@ -110,7 +110,6 @@ func New(cfg *config.Config, cfgPath string) *Model {
 		{label: "持续转写", key: "continuous_enabled", help: "给别的程序订阅的后台服务：转会议等外部音源，由说话声切句，不输出文本、不占用刘海，只给日志和结果订阅", fType: fToggle, boolVal: vc.Continuous.Enabled},
 		{label: "持续转写设备", key: "continuous_device", help: "外部音源的录音设备，通常是回环设备；和上面听写用的麦克风无关", fType: fSelect, opts: contLabels, optVals: contValues, optIdx: contIdx},
 		{label: "持续转写热键", key: "continuous_hotkey", help: "按一下开、再按一下关；只改当前状态，不写配置。留空 = 不注册，不能与听写热键重复", fType: fString, input: ti(vc.Continuous.Hotkey)},
-		{label: "结果订阅", key: "stream_enabled", help: "在本机开 WebSocket，把持续转写的识别结果推给别的程序；可多个订阅者，听写不推出去", fType: fToggle, boolVal: vc.StreamEnabled},
 		{label: "订阅地址", key: "stream_addr", help: streamAddrHelp(), fType: fString, input: ti(vc.StreamAddr)},
 		{label: "提示位置", key: "overlay_position", help: "notch 为 macOS 刘海，其他平台按 top-center 处理；保存后立即生效", fType: fSelect, opts: positions, optIdx: idxOf(positions, cfg.Overlay.Position)},
 	}
@@ -119,10 +118,11 @@ func New(cfg *config.Config, cfgPath string) *Model {
 
 // streamAddrHelp offers unix: only where it is accepted: Windows refuses it.
 func streamAddrHelp() string {
+	const lead = "持续转写开着时，在这个地址上开 WebSocket，把识别结果推给别的程序（听写不推）；"
 	if runtime.GOOS == "windows" {
-		return "如 127.0.0.1:7590，只允许回环地址"
+		return lead + "默认 127.0.0.1:7590，只允许回环地址"
 	}
-	return "如 127.0.0.1:7590，只允许回环地址；也可写 unix:<路径>，只有你自己能连"
+	return lead + "默认 127.0.0.1:7590，只允许回环地址；也可写 unix:<路径>，只有你自己能连"
 }
 
 func (m *Model) SetDebug(debug bool) {
@@ -299,10 +299,10 @@ func (m *Model) save() {
 			vc.Hotwords = settings.SplitList(f.input.Value())
 		case "hotwords_file":
 			vc.HotwordsFile = strings.TrimSpace(f.input.Value())
-		case "stream_enabled":
-			vc.StreamEnabled = f.boolVal
 		case "stream_addr":
-			vc.StreamAddr = strings.TrimSpace(f.input.Value())
+			if vc.StreamAddr = strings.TrimSpace(f.input.Value()); vc.StreamAddr == "" {
+				vc.StreamAddr = config.DefaultStreamAddr
+			}
 		case "continuous_enabled":
 			vc.Continuous.Enabled = f.boolVal
 		case "continuous_device":
@@ -322,7 +322,7 @@ func (m *Model) save() {
 		m.logf("❌ 持续转写热键：%s", err)
 		return
 	}
-	if err := voice.CheckStream(vc.StreamEnabled, vc.StreamAddr); err != nil {
+	if err := voice.CheckStreamAddr(vc.StreamAddr); err != nil {
 		m.logf("❌ %s", err)
 		return
 	}
