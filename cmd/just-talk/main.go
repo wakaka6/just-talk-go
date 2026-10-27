@@ -26,6 +26,9 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "subscribe" {
+		os.Exit(runSubscribe(os.Args[2:]))
+	}
 	backend := flag.String("backend", "", "force backend")
 	cfgPath := flag.String("config", "", "path to config file")
 	debug := flag.Bool("debug", false, "enable debug plugin")

@@ -317,6 +317,13 @@ enabled = false                    # 不需要刘海提示时关闭浮层
 
 **识别结果订阅**：**没有单独的开关，它跟着持续转写走**——持续转写在跑，Just Talk 就在 `stream_addr`（默认 `127.0.0.1:7590`，留空也按默认处理）的 `/asr` 上提供 WebSocket 订阅；持续转写关了（包括用热键或托盘开关关掉、或语音输入关掉），订阅服务随之停止，端口释放。订阅推的只有持续转写的结果，它不跑就没有东西可推，所以不需要第二个开关。设置窗口和 TUI 里它是持续转写分组里的「订阅地址」一项，下面实时显示监听中 / 未启动 / 未监听和当前订阅者数。改地址会重启订阅服务，但不会打断正在进行的转写。
 
+本机的程序不必自己实现 WebSocket 客户端：`just-talk subscribe` 就是现成的订阅者，按子进程契约工作（与 `lark-cli event consume` 同款）——识别帧逐行 NDJSON 输出到 stdout，连上时 stderr 打 ready 标记，退出时带原因（`limit` / `timeout` / `signal` / `closed`）和退出码，`--timeout` / `--max-events` 限时限次，`--addr` 可换地址。探活一帧即可：
+
+```bash
+just-talk subscribe --max-events 1      # 拿到 service 帧即在监听
+just-talk subscribe --timeout 10m        # 读 10 分钟
+```
+
 这样一来，只写了 `stream_addr`、没开持续转写的配置不再监听——以前地址本身就是开关，现在要在「持续转写」里打开它。
 
 地址有两种写法：
@@ -378,6 +385,8 @@ just-talk [flags]
 -debug               启用调试插件（配合配置 [debug]）
 -verbose             详细日志
 ```
+
+子命令 `just-talk subscribe`：把识别结果订阅当子进程消费（见上文「识别结果订阅」）。识别帧逐行 NDJSON 到 stdout，ready 标记和退出原因到 stderr；`--timeout` / `--max-events` 限时限次，`--addr` / `--config` 选地址和配置，四种正常退出原因部退出码 0，连不上为 1。
 
 </details>
 

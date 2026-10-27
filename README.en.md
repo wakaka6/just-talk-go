@@ -316,6 +316,13 @@ enabled = false                    # turn the overlay off if you don't want the 
 
 **Recognition result subscription**: **it has no switch of its own; it follows continuous transcription.** While continuous transcription runs, Just Talk serves a WebSocket at `/asr` on `stream_addr` (default `127.0.0.1:7590`; empty means the default). When the service stops — by its hotkey, the tray switch, or voice input being turned off — the subscription stops with it and the port is released. The subscription publishes only what continuous transcription hears, so with the service off there is nothing to publish and a second switch would only be confusing. In the settings window and the TUI it is the “订阅地址” row of the continuous transcription group, with a live line below saying listening / not started / not listening and how many subscribers are connected. Changing the address restarts the subscription server but does not interrupt a transcription in progress.
 
+A local program does not have to implement a WebSocket client: `just-talk subscribe` is a ready-made subscriber with a subprocess contract (the same family as `lark-cli event consume`) — recognition frames as NDJSON lines on stdout, a ready marker on stderr on connect, an exit reason (`limit` / `timeout` / `signal` / `closed`) and code on exit, `--timeout` / `--max-events` bounds and `--addr` to pick the address. One frame is enough to probe it:
+
+```bash
+just-talk subscribe --max-events 1      # a service frame means it is listening
+just-talk subscribe --timeout 10m        # read for ten minutes
+```
+
 A config that only sets `stream_addr` without turning continuous transcription on no longer listens: the address used to be the switch, now continuous transcription is.
 
 The address comes in two kinds:
@@ -378,6 +385,8 @@ just-talk [flags]
 -debug               Enable the debug plugin (with [debug] config)
 -verbose             Verbose logging
 ```
+
+Subcommand `just-talk subscribe`: consume the result subscription as a subprocess (see “Recognition result subscription” above). Frames as NDJSON lines on stdout, a ready marker and an exit reason on stderr; `--timeout` / `--max-events` bound the run, `--addr` / `--config` pick the address and config; all four normal exit reasons exit 0, a connect failure exits 1.
 
 </details>
 
