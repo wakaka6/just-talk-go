@@ -344,10 +344,10 @@ func stateDir() string {
 	return filepath.Join(base, "just-talk")
 }
 
-// idleDetail is what the status line says when nothing is happening. It
-// depends on the mode (a hotkey to press, or speech to wait for), so an
-// expiring error must reuse the last one instead of naming a hotkey.
-var idleDetail = "等待热键"
+// idleDetail is what the status line says when nothing is being dictated.
+// The transcription service never shows here: it is a background service
+// for subscribers, and the status line and the notch belong to dictation.
+const idleDetail = "等待热键"
 
 func TUIStatus() TUIVoiceStatus {
 	tuiStatusMu.Lock()
@@ -446,11 +446,10 @@ type VoicePlugin struct {
 	contCancel context.CancelFunc
 	contDone   chan struct{}
 	contCfg    config.VoiceConfig
-	// contState and contDetail are what the transcription service is doing.
-	// It shares one status line with dictation, which outranks it.
-	contState  string
-	contDetail string
-	contCombos []hotkey.Combo
+	// contSessionID numbers the service's ASR sessions apart from
+	// dictation's sessionID, which identifies the session being dictated.
+	contSessionID uint64
+	contCombos    []hotkey.Combo
 	// contEnabled is the live on/off that the hotkey flips; contConfigured is
 	// the last value the config asked for, so editing the setting still wins
 	// over an earlier toggle.
@@ -1281,7 +1280,7 @@ func (p *VoicePlugin) claimSessionOutput(sessionID uint64) bool {
 }
 
 func (p *VoicePlugin) publishStatusLocked() {
-	state, detail := "idle", "等待热键"
+	state, detail := "idle", idleDetail
 	stopAt := time.Time{}
 	recording, stopping := p.recording, false
 
@@ -1300,13 +1299,6 @@ func (p *VoicePlugin) publishStatusLocked() {
 	case p.lastError != "" && time.Now().Before(p.errorUntil):
 		state, detail = "error", p.lastError
 	}
-	if state == "idle" && p.contState != "" {
-		// Nothing is being dictated, so the status line shows what the
-		// transcription service is doing instead of a hotkey that just waits.
-		state, detail = p.contState, p.contDetail
-		recording = state == "recording"
-	}
-
 	p.publishStatusSnapshotLocked(state, detail, recording, stopping, stopAt, p.sessionID)
 	errorActive := state == "error" && time.Now().Before(p.errorUntil)
 	wasFlowActive := p.flowActive
@@ -1346,9 +1338,6 @@ func (p *VoicePlugin) publishStatusSnapshotLocked(state, detail string, recordin
 	pendingDone := p.pendingDone
 	setTUIStatus(func(s *TUIVoiceStatus) {
 		s.State, s.Detail = state, detail
-		if state == "idle" {
-			idleDetail = detail
-		}
 		s.Recording, s.Stopping = recording, stopping
 		s.StopAt = stopAt
 		s.ErrorUntil = p.errorUntil

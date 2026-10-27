@@ -301,7 +301,7 @@ hotkeys = []                       # 调试插件额外注册的热键
 
 写 `silence_gate = false` 退回老行为：会话一直连着，因任何原因结束（服务端结束、错误、断网）都自动重连（0.5s 起退避，最长 5s），录音设备在重连期间保持打开，重连间隙里最近约 5 秒的音频补发给新会话——代价是静音也在上传，而且补发可能让压在重连点上的句子被识别两遍。
 
-这一路**从不**上屏、不写剪贴板；结果只进入日志、浮层和下文的 WebSocket 订阅。需要流式引擎（如 `doubao-stream`、`dashscope`）。macOS 上可配合 [BlackHole](https://github.com/ExistentialAudio/BlackHole) 等虚拟音频设备：把会议软件的扬声器输出设为 BlackHole，再让它从 BlackHole 录音：
+这一路**从不**上屏、不写剪贴板，也**不占用刘海 / 状态浮层**：它只是给别的程序订阅的后台服务，刘海和状态行只属于听写，出现了就一定是你在听写。结果只进入日志和下文的 WebSocket 订阅；服务开没开看托盘面板的“持续转写”开关。需要流式引擎（如 `doubao-stream`、`dashscope`）。macOS 上可配合 [BlackHole](https://github.com/ExistentialAudio/BlackHole) 等虚拟音频设备：把会议软件的扬声器输出设为 BlackHole，再让它从 BlackHole 录音：
 
 ```toml
 [voice]

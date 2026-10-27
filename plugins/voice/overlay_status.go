@@ -34,7 +34,7 @@ var (
 	overlayPending   int
 	overlayOutput    VoiceOutput
 	// activeRecorder is dictation's; continuousRecorder is the transcription
-	// service's. Both can be open at once, and the meter follows dictation.
+	// service's. Both can be open at once; the meter is dictation's only.
 	activeRecorder     atomic.Pointer[Recorder]
 	continuousRecorder atomic.Pointer[Recorder]
 	// overlayUpdates wakes the overlay as soon as state, partial text or
@@ -56,9 +56,6 @@ func notifyOverlay() {
 func OverlayStatus() OverlayVoiceStatus {
 	var level float64
 	rec := activeRecorder.Load()
-	if rec == nil {
-		rec = continuousRecorder.Load()
-	}
 	if rec != nil {
 		level = rec.Level()
 	}

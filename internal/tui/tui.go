@@ -107,7 +107,7 @@ func New(cfg *config.Config, cfgPath string) *Model {
 		{label: "停止延迟(ms)", key: "stop_delay_ms", help: "松手后补录毫秒", fType: fString, input: ti(fmt.Sprintf("%d", vc.StopDelayMs))},
 		{label: "热词", key: "hotwords", help: "逗号分隔术语", fType: fString, input: ti(strings.Join(vc.Hotwords, ", "))},
 		{label: "热词文件", key: "hotwords_file", help: "外部词表路径，一行一个词，# 开头为注释；与上面的热词合并，每次会话开始时重读", fType: fString, input: ti(vc.HotwordsFile)},
-		{label: "持续转写", key: "continuous_enabled", help: "与听写并行的另一路：转会议等外部音源，由说话声切句，不输出文本，只给日志、浮层和结果订阅", fType: fToggle, boolVal: vc.Continuous.Enabled},
+		{label: "持续转写", key: "continuous_enabled", help: "给别的程序订阅的后台服务：转会议等外部音源，由说话声切句，不输出文本、不占用刘海，只给日志和结果订阅", fType: fToggle, boolVal: vc.Continuous.Enabled},
 		{label: "持续转写设备", key: "continuous_device", help: "外部音源的录音设备，通常是回环设备；和上面听写用的麦克风无关", fType: fSelect, opts: contLabels, optVals: contValues, optIdx: contIdx},
 		{label: "持续转写热键", key: "continuous_hotkey", help: "按一下开、再按一下关；只改当前状态，不写配置。留空 = 不注册，不能与听写热键重复", fType: fString, input: ti(vc.Continuous.Hotkey)},
 		{label: "结果订阅", key: "stream_enabled", help: "在本机开 WebSocket，把持续转写的识别结果推给别的程序；可多个订阅者，听写不推出去", fType: fToggle, boolVal: vc.StreamEnabled},

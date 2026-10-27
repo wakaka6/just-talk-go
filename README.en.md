@@ -300,7 +300,7 @@ An old `mode = "continuous"` migrates on load: `[voice.continuous] enabled = tru
 
 Set `silence_gate = false` for the older behaviour: one long session that reconnects whenever it ends for any reason (server end, error, network drop) with a backoff from 0.5s capped at 5s, the recording device staying open across reconnects, and up to the last 5 seconds of audio replayed into the new session — at the price of uploading silence, and of a sentence that straddles a reconnect being recognised twice.
 
-This path **never** types, pastes or touches the clipboard; results go only to the log, the overlay and the WebSocket subscription below. It needs a streaming engine (e.g. `doubao-stream`, `dashscope`). On macOS, pair it with a loopback device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole): set the meeting app's speaker output to BlackHole and record from it:
+This path **never** types, pastes or touches the clipboard, and it **never takes over the notch or the status overlay**: it is a background service for other programs to subscribe to, and the notch and the status line belong to dictation, so when they show up you are dictating. Results go only to the log and the WebSocket subscription below; the “持续转写” switch in the tray panel shows whether the service is on. It needs a streaming engine (e.g. `doubao-stream`, `dashscope`). On macOS, pair it with a loopback device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole): set the meeting app's speaker output to BlackHole and record from it:
 
 ```toml
 [voice]

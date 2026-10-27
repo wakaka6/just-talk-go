@@ -97,7 +97,6 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 		}
 		if err := rec.Start(); err != nil {
 			p.logger.Error("continuous: recorder start failed", "error", err)
-			p.publishContinuousStatus("error", "录音启动失败: "+shortError(err))
 			pout("❌ 录音启动失败: %v", err)
 			if !sleepContext(ctx, backoff) {
 				break
@@ -132,11 +131,6 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 			backoff = nextContinuousBackoff(backoff)
 		}
 	}
-	p.mu.Lock()
-	// The service is gone: hand the status line back to dictation.
-	p.contState, p.contDetail = "", ""
-	p.publishStatusLocked()
-	p.mu.Unlock()
 	pout("🎧 持续转写已停止")
 	p.logger.Info("continuous: stopped")
 }
@@ -147,10 +141,6 @@ func (p *VoicePlugin) runContinuous(ctx context.Context, vc config.VoiceConfig) 
 func (p *VoicePlugin) runContinuousSessions(ctx context.Context, vc config.VoiceConfig, gate *speechGate) {
 	backoff := continuousBackoffMin
 	for ctx.Err() == nil {
-		if gate.enabled {
-			// Not "waiting for a hotkey": this mode has none.
-			p.publishContinuousStatus("idle", "持续转写：等待说话")
-		}
 		if !gate.waitOpen(ctx) {
 			return
 		}
@@ -161,7 +151,6 @@ func (p *VoicePlugin) runContinuousSessions(ctx context.Context, vc config.Voice
 		}
 		if errors.Is(err, errContinuousNeedsStreaming) {
 			p.logger.Error("continuous: engine is not streaming", "engine", vc.Engine)
-			p.publishContinuousStatus("error", err.Error())
 			pout("❌ %v", err)
 			<-ctx.Done()
 			return
@@ -176,10 +165,8 @@ func (p *VoicePlugin) runContinuousSessions(ctx context.Context, vc config.Voice
 		}
 		p.logger.Warn("continuous: session ended, reconnecting", "error", err, "connected", connected, "backoff", backoff)
 		if connected {
-			p.publishContinuousStatus("connecting", "持续转写：会话结束，正在重连")
 			pout("⚠️  ASR 会话结束 (%v)，%s 后重连", err, backoff)
 		} else {
-			p.publishContinuousStatus("error", "ASR 连接失败: "+asrConnectErrorDetail(err))
 			pout("❌ ASR 连接失败: %v，%s 后重试", err, backoff)
 		}
 		if !sleepContext(ctx, backoff) {
@@ -196,13 +183,9 @@ func (p *VoicePlugin) runContinuousSession(ctx context.Context, vc config.VoiceC
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	p.mu.Lock()
-	p.sessionID++
-	sessionID := p.sessionID
+	p.contSessionID++
+	sessionID := p.contSessionID
 	p.mu.Unlock()
-	p.publishContinuousStatus("connecting", "持续转写：正在连接 ASR")
-	if !p.dictationBusy() {
-		resetOverlaySession(sessionID)
-	}
 
 	eng, err := asrcfg.Build(vc)
 	if err != nil {
@@ -221,7 +204,6 @@ func (p *VoicePlugin) runContinuousSession(ctx context.Context, vc config.VoiceC
 	}
 	defer p.closeStreamSession(client)
 	pout("✅ ASR 已连接 (持续转写)")
-	p.publishContinuousStatus("recording", "持续转写中")
 	p.publishSessionStart(sessionID)
 	// Hotwords only reach the engine when a session opens. With the gate on
 	// that is once per utterance, so the file is already reread every time;
@@ -281,9 +263,6 @@ func (p *VoicePlugin) consumeContinuousResults(ctx context.Context, sessionID ui
 				return result.Error
 			}
 			p.publishASRResult(sessionID, client, result)
-			if result.Text != "" && !p.dictationBusy() {
-				setOverlayPartial(sessionID, result.Text)
-			}
 			printed = printUtterances(result.Utterances, printed)
 			if result.Last {
 				return errSessionEndedByServer
@@ -395,31 +374,6 @@ func (p *VoicePlugin) serviceState() streamServiceEvent {
 }
 
 func (p *VoicePlugin) publishServiceState() { p.streamBroadcast(p.serviceState()) }
-
-// publishContinuousStatus records what the service is doing and shows it only
-// while dictation is idle: the user pressing a key outranks the room.
-func (p *VoicePlugin) publishContinuousStatus(state, detail string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.contState, p.contDetail = state, detail
-	if p.dictationBusyLocked() {
-		return
-	}
-	// Status only: the hotkey state machine (and its Esc/R hotkeys) stays idle.
-	p.publishStatusSnapshotLocked(state, detail, state == "recording", false, time.Time{}, p.sessionID)
-}
-
-// dictationBusyLocked reports whether the hotkey side owns the status line and
-// the overlay.
-func (p *VoicePlugin) dictationBusyLocked() bool {
-	return p.recording || p.stopping || p.pendingDone > 0
-}
-
-func (p *VoicePlugin) dictationBusy() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.dictationBusyLocked()
-}
 
 // continuousKey drops the settings that belong to dictation, so editing a
 // hotkey or the paste destination does not interrupt a transcription that is
