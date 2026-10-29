@@ -118,7 +118,7 @@ func New(cfg *config.Config, cfgPath string) *Model {
 
 // streamAddrHelp offers unix: only where it is accepted: Windows refuses it.
 func streamAddrHelp() string {
-	const lead = "持续转写开着时，在这个地址上开 WebSocket，把识别结果推给别的程序（听写不推）；"
+	const lead = "Just Talk 运行时一直在这个地址上开 WebSocket，把持续转写的结果推给别的程序（听写不推），关着时只报空闲；"
 	if runtime.GOOS == "windows" {
 		return lead + "默认 127.0.0.1:7590，只允许回环地址"
 	}

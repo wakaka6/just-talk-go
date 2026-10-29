@@ -23,8 +23,8 @@ just-talk subscribe --config ~/.config/just-talk/config.toml
 
 - **stdout**：一行一个 JSON 帧，原样透传，无前缀无包装。别往 stdout 打诊断信息。
 - **stderr**：连上后先出一行 `[subscribe] ready addr=…`，父进程等这一行再开始读 stdout，不要 sleep。退出时最后一行 `[subscribe] exited — received N frame(s) in Xs (reason: …)`。
-- **reason**：`limit`（够了 N 帧）、`timeout`（到了时限）、`signal`（收到 SIGTERM/Ctrl+C）、`closed`（服务停了，连接被关）。四种都退出码 0，算正常完成。
-- **退出码 1** 只表示连接失败：多半是持续转写没开——订阅跟着持续转写走，它不跑就没有东西可推。错误信息里带地址。
+- **reason**：`limit`（够了 N 帧）、`timeout`（到了时限）、`signal`（收到 SIGTERM/Ctrl+C）、`closed`（Just Talk 退出或换了订阅地址，连接被关；持续转写关掉不会断开）。四种都退出码 0，算正常完成。
+- **退出码 1** 只表示连接失败：Just Talk 没在运行，或地址不对。订阅端点在 Just Talk 运行期间一直在；持续转写关着时照样连得上，`service` 帧的 `state` 为 `idle`。错误信息里带地址。
 - stdin 完全不读，不用喂。
 
 ## 帧

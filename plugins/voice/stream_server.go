@@ -379,7 +379,7 @@ func (p *VoicePlugin) publishASRResult(sessionID uint64, client speech.StreamSes
 }
 
 // syncStreamServerLocked (re)starts the subscription server when the address
-// changes; an empty address (the service is not running) stops it. A bad
+// changes; an empty address (the plugin is stopping) stops it. A bad
 // address is logged and leaves the server off until the next sync retries it.
 func (p *VoicePlugin) syncStreamServerLocked(addr string) {
 	addr = strings.TrimSpace(addr)

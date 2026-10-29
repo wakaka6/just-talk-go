@@ -94,7 +94,7 @@
             </div>
           </div>
           <div class="row device-row">
-            <span class="label">订阅地址<small>持续转写开着时，在本机开一个 WebSocket，把每一条识别结果（含分句与已确定标记）实时推给别的程序，可同时连多个订阅者，你自己的听写不会推出去。只允许回环地址<span id="streamUnixHint">；也可以写 unix:&lt;路径&gt;，只有你自己能连</span></small></span>
+            <span class="label">订阅地址<small>Just Talk 运行时一直在本机开着一个 WebSocket。持续转写关着时订阅者也连得上，只是收到“空闲”；开着时把每一条识别结果（含分句与已确定标记）实时推给别的程序，可同时连多个订阅者，你自己的听写不会推出去。只允许回环地址<span id="streamUnixHint">；也可以写 unix:&lt;路径&gt;，只有你自己能连</span></small></span>
             <div class="stack">
               <input type="text" name="streamAddr" id="streamAddr" spellcheck="false" placeholder="127.0.0.1:7590" aria-label="订阅监听地址">
               <p id="streamState" class="field-note"></p>

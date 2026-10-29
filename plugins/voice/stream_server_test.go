@@ -15,6 +15,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/c/just-talk-go/config"
 	"github.com/c/just-talk-go/internal/speech"
 )
 
@@ -174,6 +175,46 @@ func TestSubscriberIsToldTheServiceStateFirst(t *testing.T) {
 	readJSON(t, ctx, conn, &next)
 	if next != newSessionStartEvent("jt-1") {
 		t.Fatalf("second frame = %+v, want the broadcast", next)
+	}
+}
+
+// The service switch is a record button, not the endpoint's: with the service
+// off a subscriber still connects and is told it is idle, so it can tell a
+// switched-off service from a Just Talk that is not running.
+func TestSubscriptionListensWhileTheServiceIsOff(t *testing.T) {
+	cfg := config.Default()
+	cfg.Voice.StreamAddr = "127.0.0.1:0"
+	p, _ := continuousPlugin(t, cfg)
+	p.mu.Lock()
+	p.runCtx = context.Background()
+	p.mu.Unlock()
+	p.syncContinuous()
+
+	url, _ := StreamStatus()
+	if url == "" || p.contEnabled {
+		t.Fatalf("StreamStatus() = %q with the service on = %v, want listening while off", url, p.contEnabled)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	p.mu.Lock()
+	addr := p.stream.Addr()
+	p.mu.Unlock()
+	conn, _, err := websocket.Dial(ctx, "ws://"+addr+streamPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	var got streamServiceEvent
+	readJSON(t, ctx, conn, &got)
+	if got.Type != "service" || got.State != serviceIdle {
+		t.Fatalf("first frame = %+v, want service idle", got)
+	}
+
+	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if url, _ := StreamStatus(); url != "" {
+		t.Fatalf("StreamStatus() after Stop = %q, want closed", url)
 	}
 }
 

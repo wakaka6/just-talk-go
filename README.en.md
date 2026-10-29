@@ -219,7 +219,7 @@ language = "zh-CN"
 text_output = "paste"              # where recognized text goes: paste | clipboard | none
 stop_delay_ms = 0                  # release delay in hold mode
 device = ""                        # recording device (empty = default; macOS matches device UID or name)
-stream_addr = "127.0.0.1:7590"     # subscription address: loopback host:port or "unix:~/.../asr.sock"; listened on only while continuous transcription runs
+stream_addr = "127.0.0.1:7590"     # subscription address: loopback host:port or "unix:~/.../asr.sock"; listened on while Just Talk runs
 gain = 0                           # microphone gain
 app_key = "your-app-key"
 access_key = "your-access-key"
@@ -291,7 +291,7 @@ This path has no finger on a key: in dictation a person decides where a sentence
 
 **It has a hotkey too**: bind one in `[voice.continuous] hotkey` and press it to start the service, press it again to stop — the same way you switch dictation on and off. The difference is what the key bounds: a whole service rather than a sentence, so it only toggles and there is no hold — nobody holds a key down for an entire meeting, and sentence boundaries are the silence gate's job anyway. The key changes the **running state** only; it never writes the config file. Editing `enabled` in the settings afterwards overrides what the key chose (an explicit instruction wins), while a reload that leaves the setting alone leaves the key's choice alone. It cannot be the same combo as a dictation hotkey; the settings window and the TUI refuse to save that.
 
-It answers to `[voice] enabled`: turning voice input off (including the “语音输入” switch in the tray panel) also stops continuous transcription and unregisters its hotkey. The subscription server follows continuous transcription and stops with it.
+It answers to `[voice] enabled`: turning voice input off (including the “语音输入” switch in the tray panel) also stops continuous transcription and unregisters its hotkey. The subscription server stays up; its subscribers are told the service is idle.
 
 The tray panel has a “持续转写” switch too. It shows the **running state**, so it follows the hotkey; clicking it both saves the setting (it survives a restart) and switches the running service, so a service the hotkey started over a saved “off” still stops when you turn it off in the panel. It is greyed out while voice input is off.
 
@@ -314,16 +314,14 @@ device = "BlackHole 2ch"
 enabled = false                    # turn the overlay off if you don't want the notch indicator
 ```
 
-**Recognition result subscription**: **it has no switch of its own; it follows continuous transcription.** While continuous transcription runs, Just Talk serves a WebSocket at `/asr` on `stream_addr` (default `127.0.0.1:7590`; empty means the default). When the service stops — by its hotkey, the tray switch, or voice input being turned off — the subscription stops with it and the port is released. The subscription publishes only what continuous transcription hears, so with the service off there is nothing to publish and a second switch would only be confusing. In the settings window and the TUI it is the “订阅地址” row of the continuous transcription group, with a live line below saying listening / not started / not listening and how many subscribers are connected. Changing the address restarts the subscription server but does not interrupt a transcription in progress.
+**Recognition result subscription**: **it has no switch of its own; it is up for as long as Just Talk runs.** Just Talk serves a WebSocket at `/asr` on `stream_addr` (default `127.0.0.1:7590`; empty means the default). The continuous transcription switch — setting, hotkey, tray switch — only decides whether the device is being recorded, the way a recorder's record button does: you do not want to record all the time, but a program that follows the transcripts should not lose its connection or have to guess whether Just Talk died. While the service is off, subscribers stay connected and get a `service` frame with `state: "idle"`; when it comes back they get `listening` and the results resume. In the settings window and the TUI it is the “订阅地址” row of the continuous transcription group, with a live line below showing the URL and how many subscribers are connected, or that the server did not start (address taken or invalid; the log says why). Changing the address restarts the subscription server but does not interrupt a transcription in progress.
 
 A local program does not have to implement a WebSocket client: `just-talk subscribe` is a ready-made subscriber with a subprocess contract (the same family as `lark-cli event consume`) — recognition frames as NDJSON lines on stdout, a ready marker on stderr on connect, an exit reason (`limit` / `timeout` / `signal` / `closed`) and code on exit, `--timeout` / `--max-events` bounds and `--addr` to pick the address. One frame is enough to probe it:
 
 ```bash
-just-talk subscribe --max-events 1      # a service frame means it is listening
+just-talk subscribe --max-events 1      # one service frame: Just Talk is up, state says whether it is recording
 just-talk subscribe --timeout 10m        # read for ten minutes
 ```
-
-A config that only sets `stream_addr` without turning continuous transcription on no longer listens: the address used to be the switch, now continuous transcription is.
 
 The address comes in two kinds:
 
@@ -348,7 +346,7 @@ The server sends JSON text frames only:
 
 ```jsonc
 // sent once on connect, then broadcast whenever it changes; state is listening
-// (capturing, speech will be transcribed) or idle (the service is off or capture died)
+// (capturing, speech will be transcribed) or idle (the service is switched off or capture died)
 {"type":"service","state":"listening","device":"BlackHole 2ch","engine":"doubao-stream","gate":true}
 // an ASR session connected
 {"type":"session","state":"start","session":"jt-20261024T143352-1"}
@@ -360,7 +358,7 @@ The server sends JSON text frames only:
 {"type":"session","state":"end","session":"jt-20261024T143352-1","reason":"closed"}
 ```
 
-While nobody is talking the stream is silent, so "listening, nobody is speaking" and "the process is not running" look exactly the same on the wire — the `service` frame is what tells them apart, and it says far more than whether a port is bound. It does **not** carry `text_output`: where dictated text lands is none of a subscriber's business.
+While nobody is talking the stream is silent, so "listening, nobody is speaking", "switched off" and "the process is not running" would look the same on the wire. The `service` frame tells the first two apart; a refused connection means the third. It does **not** carry `text_output`: where dictated text lands is none of a subscriber's business.
 
 Publishing never slows recognition down: each subscriber has its own buffer, and a subscriber that falls more than 256 frames behind is disconnected without affecting the others.
 

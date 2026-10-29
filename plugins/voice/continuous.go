@@ -50,10 +50,12 @@ func (p *VoicePlugin) syncContinuous() {
 	ctx := p.runCtx
 	vc := p.cfg.Voice
 	want := ctx != nil && vc.Enabled && p.contEnabled
-	// The subscription has no switch of its own: it publishes only what the
-	// service hears, so it listens exactly while the service runs.
+	// The subscription has no switch of its own and does not follow the
+	// service either: the switch decides whether a device is captured, and
+	// subscribers stay connected across it, told by service frames whether
+	// anything is being heard. It listens for as long as Just Talk runs.
 	streamAddr := ""
-	if want {
+	if ctx != nil {
 		streamAddr = vc.StreamAddr
 		if strings.TrimSpace(streamAddr) == "" {
 			streamAddr = config.DefaultStreamAddr

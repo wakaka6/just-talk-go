@@ -76,7 +76,7 @@ func Subscribe(ctx context.Context, addr string, opts SubscribeOptions) (frames 
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return 0, subscribeReasonFor(ctxErr), nil
 		}
-		return 0, "", fmt.Errorf("连接 %s 失败: %w；持续转写开着时才会监听", display, err)
+		return 0, "", fmt.Errorf("连接 %s 失败: %w；Just Talk 没在运行，或地址与配置的 stream_addr 不一致", display, err)
 	}
 	defer conn.CloseNow()
 	fmt.Fprintf(errw, "[subscribe] ready addr=%s\n", display)
